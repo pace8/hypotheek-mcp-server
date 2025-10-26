@@ -2,12 +2,10 @@
 import "dotenv/config";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-import express from "express";
 
 // Je Replit API URLs en API Key
 const REPLIT_API_URL_BEREKENEN = "https://digital-mortgage-calculator.replit.app/berekenen/maximaal";
@@ -17,7 +15,7 @@ const API_KEY = process.env.REPLIT_API_KEY;
 if (!API_KEY) {
   console.error("FOUT: REPLIT_API_KEY environment variabele is niet ingesteld!");
   process.exit(1);
-};
+}
 
 const server = new Server(
   {
@@ -250,39 +248,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   throw new Error(`Onbekende tool: ${request.params.name}`);
 });
 
-// Start de server
+// Start de server met stdio transport
 async function main() {
-  const transportMode = process.env.MCP_TRANSPORT || "stdio";
-  
-  if (transportMode === "sse") {
-    // SSE transport voor online streaming (Glama.ai)
-    const app = express();
-    const PORT = process.env.PORT || 3000;
-
-    app.get("/health", (req, res) => {
-      res.json({ status: "ok" });
-    });
-
-    app.get("/sse", async (req, res) => {
-      console.error("SSE connection established");
-      const transport = new SSEServerTransport("/message", res);
-      await server.connect(transport);
-    });
-
-    app.post("/message", async (req, res) => {
-      // Handle incoming messages
-      res.sendStatus(200);
-    });
-
-    app.listen(PORT, () => {
-      console.error(`Hypotheek MCP Server draait op poort ${PORT} (SSE mode)!`);
-    });
-  } else {
-    // Stdio transport voor lokaal gebruik
-    const transport = new StdioServerTransport();
-    await server.connect(transport);
-    console.error("Hypotheek MCP Server draait (stdio mode)!");
-  }
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+  console.error("Hypotheek MCP Server draait (stdio mode)!");
 }
 
 main().catch((error) => {
