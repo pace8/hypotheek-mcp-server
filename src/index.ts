@@ -9,6 +9,7 @@ import {
 
 // Je Replit API URLs en API Key
 const REPLIT_API_URL_BEREKENEN = "https://digital-mortgage-calculator.replit.app/berekenen/maximaal";
+const REPLIT_API_URL_OPZET = "https://digital-mortgage-calculator.replit.app/berekenen/opzet-hypotheek";
 const REPLIT_API_URL_RENTES = "https://digital-mortgage-calculator.replit.app/rentes";
 const API_KEY = process.env.REPLIT_API_KEY;
 
@@ -61,10 +62,62 @@ interface UitgebreidArguments extends BaseArguments {
   nieuwe_hypotheek?: NieuweHypotheek;
 }
 
+// Type definitions voor opzet hypotheek
+interface OpzetBaseArguments {
+  inkomen_aanvrager: number;
+  geboortedatum_aanvrager: string;
+  heeft_partner: boolean;
+  inkomen_partner?: number;
+  geboortedatum_partner?: string;
+  verplichtingen_pm?: number;
+  eigen_vermogen?: number;
+}
+
+interface NieuweWoning {
+  waarde_woning: number;
+  bedrag_verbouwen?: number;
+  bedrag_verduurzamen?: number;
+  kosten_percentage?: number;
+  energielabel?: string;
+}
+
+interface OpzetStarterArguments extends OpzetBaseArguments {
+  nieuwe_woning: NieuweWoning;
+}
+
+interface OpzetDoorstromerArguments extends OpzetBaseArguments {
+  nieuwe_woning: NieuweWoning;
+  waarde_huidige_woning: number;
+  bestaande_hypotheek: BestaandeHypotheek;
+}
+
+interface Renteklasse {
+  naam: string;
+  lowerbound_ltv_pct: number;
+  higherbound_ltv_pct: number;
+  nhg: boolean;
+  rente_jaarlijks_pct: number;
+}
+
+interface OpzetNieuweLening {
+  looptijd_jaren?: number;
+  rentevast_periode_jaren?: number;
+  nhg?: boolean;
+  renteklassen?: Renteklasse[];
+}
+
+interface OpzetUitgebreidArguments extends OpzetBaseArguments {
+  nieuwe_woning: NieuweWoning;
+  is_doorstromer?: boolean;
+  waarde_huidige_woning?: number;
+  bestaande_hypotheek?: BestaandeHypotheek;
+  nieuwe_lening?: OpzetNieuweLening;
+}
+
 const server = new Server(
   {
     name: "hypotheek-berekening-server",
-    version: "2.0.0",
+    version: "3.0.0",
   },
   {
     capabilities: {
@@ -371,6 +424,380 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           required: [],
         },
       },
+      
+      // Tool 5: Opzet hypotheek - Starters
+      {
+        name: "opzet_hypotheek_starter",
+        description: "Berekent de opzet van een hypotheek voor STARTERS (eerste koopwoning). Voor mensen zonder bestaande hypotheek die hun eerste huis willen kopen. Berekent het benodigde bedrag, financieringsmogelijkheden en maandlasten op basis van: inkomen, leeftijd, eigen vermogen, woningprijs, en eventuele verbouwings-/verduurzamingskosten. Vraag ook naar energielabel van de nieuwe woning.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            inkomen_aanvrager: {
+              type: "number",
+              description: "Bruto jaarinkomen van de hoofdaanvrager in euro's",
+            },
+            geboortedatum_aanvrager: {
+              type: "string",
+              description: "Geboortedatum aanvrager in formaat YYYY-MM-DD. TIP: Vraag de gebruiker naar zijn/haar leeftijd en reken dit om naar een geboortedatum waarbij de persoon morgen jarig wordt.",
+            },
+            heeft_partner: {
+              type: "boolean",
+              description: "Heeft de aanvrager een partner die mee aanvraagt?",
+            },
+            inkomen_partner: {
+              type: "number",
+              description: "OPTIONEEL - Bruto jaarinkomen van de partner in euro's. Alleen invullen indien heeft_partner: true",
+            },
+            geboortedatum_partner: {
+              type: "string",
+              description: "OPTIONEEL - Geboortedatum partner in formaat YYYY-MM-DD. Alleen invullen indien heeft_partner: true.",
+            },
+            verplichtingen_pm: {
+              type: "number",
+              description: "Maandelijkse verplichtingen in euro's (andere leningen, alimentatie, etc.). Gebruik 0 als er geen verplichtingen zijn.",
+              default: 0,
+            },
+            eigen_vermogen: {
+              type: "number",
+              description: "Eigen geld beschikbaar in euro's (spaargeld, gift, etc.). Gebruik 0 als er geen eigen vermogen is.",
+              default: 0,
+            },
+            nieuwe_woning: {
+              type: "object",
+              description: "Gegevens van de nieuwe woning die gekocht wordt",
+              properties: {
+                waarde_woning: {
+                  type: "number",
+                  description: "Koopsom van de nieuwe woning in euro's",
+                },
+                bedrag_verbouwen: {
+                  type: "number",
+                  description: "OPTIONEEL - Geschatte kosten voor verbouwing/meerwerk in euro's. Gebruik 0 als er geen verbouwing is.",
+                  default: 0,
+                },
+                bedrag_verduurzamen: {
+                  type: "number",
+                  description: "OPTIONEEL - Geschatte kosten voor verduurzaming in euro's. Gebruik 0 als er geen verduurzaming is.",
+                  default: 0,
+                },
+                kosten_percentage: {
+                  type: "number",
+                  description: "OPTIONEEL - Koperkosten als decimaal (bijv. 0.05 voor 5%). Standaard: 0.05 (= 5%)",
+                  default: 0.05,
+                },
+                energielabel: {
+                  type: "string",
+                  description: "OPTIONEEL - Energielabel van de nieuwe woning. Gebruik exacte notatie!",
+                  enum: ["A++++ (met garantie)", "A++++", "A+++", "A++", "A+", "A", "B", "C", "D", "E", "F", "G"],
+                },
+              },
+              required: ["waarde_woning"],
+            },
+          },
+          required: [
+            "inkomen_aanvrager",
+            "geboortedatum_aanvrager",
+            "heeft_partner",
+            "nieuwe_woning",
+          ],
+        },
+      },
+      
+      // Tool 6: Opzet hypotheek - Doorstromers
+      {
+        name: "opzet_hypotheek_doorstromer",
+        description: "Berekent de opzet van een hypotheek voor DOORSTROMERS (mensen met bestaande koopwoning en hypotheek). Voor mensen die een nieuwe woning willen kopen en hun huidige woning verkopen. Berekent het benodigde bedrag, overwaarde, nieuwe financiering en maandlasten. Vraag naar: inkomen, leeftijd, eigen vermogen, huidige woningwaarde, bestaande hypotheekgegevens, nieuwe woningprijs, en eventuele verbouwings-/verduurzamingskosten. BELANGRIJK: Rentes als decimaal (0.02 = 2%), looptijden in MAANDEN.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            inkomen_aanvrager: {
+              type: "number",
+              description: "Bruto jaarinkomen van de hoofdaanvrager in euro's",
+            },
+            geboortedatum_aanvrager: {
+              type: "string",
+              description: "Geboortedatum aanvrager in formaat YYYY-MM-DD",
+            },
+            heeft_partner: {
+              type: "boolean",
+              description: "Heeft de aanvrager een partner die mee aanvraagt?",
+            },
+            inkomen_partner: {
+              type: "number",
+              description: "OPTIONEEL - Bruto jaarinkomen van de partner in euro's. Alleen invullen indien heeft_partner: true",
+            },
+            geboortedatum_partner: {
+              type: "string",
+              description: "OPTIONEEL - Geboortedatum partner in formaat YYYY-MM-DD. Alleen invullen indien heeft_partner: true.",
+            },
+            verplichtingen_pm: {
+              type: "number",
+              description: "Maandelijkse verplichtingen in euro's. Gebruik 0 als er geen zijn.",
+              default: 0,
+            },
+            eigen_vermogen: {
+              type: "number",
+              description: "Eigen geld beschikbaar in euro's (spaargeld, gift, etc.). Gebruik 0 als er geen eigen vermogen is.",
+              default: 0,
+            },
+            waarde_huidige_woning: {
+              type: "number",
+              description: "Huidige marktwaarde van de woning die verkocht wordt, in euro's",
+            },
+            bestaande_hypotheek: {
+              type: "object",
+              description: "Gegevens van de bestaande hypotheek. Twee opties: SIMPEL (1 leningdeel met totalen) of GEDETAILLEERD (alle leningdelen apart). BELANGRIJK: Rentes als decimaal (0.02 = 2%), looptijden in MAANDEN.",
+              properties: {
+                leningdelen: {
+                  type: "array",
+                  description: "Bestaande leningdelen. Voor SIMPELE berekening: 1 item met totale restschuld, gemiddelde rente, resterende looptijd in MAANDEN, rentevasteperiode_maanden: 10, hypotheekvorm: 'annuiteit'. Voor GEDETAILLEERDE berekening: elk leningdeel apart.",
+                  items: {
+                    type: "object",
+                    properties: {
+                      huidige_schuld: {
+                        type: "number",
+                        description: "Restschuld van dit leningdeel in euro's",
+                      },
+                      huidige_rente: {
+                        type: "number",
+                        description: "Rente als decimaal (bijv. 0.02 voor 2%, 0.041 voor 4.1%)",
+                      },
+                      resterende_looptijd_in_maanden: {
+                        type: "number",
+                        description: "Resterende looptijd in MAANDEN (niet jaren!). Bijvoorbeeld: 20 jaar = 240 maanden, 30 jaar = 360 maanden.",
+                      },
+                      rentevasteperiode_maanden: {
+                        type: "number",
+                        description: "Resterende rentevaste periode in MAANDEN. Bij simpele berekening: gebruik 10 maanden.",
+                      },
+                      hypotheekvorm: {
+                        type: "string",
+                        description: "Type hypotheek: 'annuiteit', 'lineair', of 'aflossingsvrij'",
+                        enum: ["annuiteit", "lineair", "aflossingsvrij"],
+                      },
+                    },
+                    required: ["huidige_schuld", "huidige_rente", "resterende_looptijd_in_maanden", "rentevasteperiode_maanden", "hypotheekvorm"],
+                  },
+                },
+              },
+              required: ["leningdelen"],
+            },
+            nieuwe_woning: {
+              type: "object",
+              description: "Gegevens van de nieuwe woning die gekocht wordt",
+              properties: {
+                waarde_woning: {
+                  type: "number",
+                  description: "Koopsom van de nieuwe woning in euro's",
+                },
+                bedrag_verbouwen: {
+                  type: "number",
+                  description: "OPTIONEEL - Geschatte kosten voor verbouwing/meerwerk in euro's. Gebruik 0 als er geen verbouwing is.",
+                  default: 0,
+                },
+                bedrag_verduurzamen: {
+                  type: "number",
+                  description: "OPTIONEEL - Geschatte kosten voor verduurzaming in euro's. Gebruik 0 als er geen verduurzaming is.",
+                  default: 0,
+                },
+                kosten_percentage: {
+                  type: "number",
+                  description: "OPTIONEEL - Koperkosten als decimaal (bijv. 0.05 voor 5%). Standaard: 0.05 (= 5%)",
+                  default: 0.05,
+                },
+                energielabel: {
+                  type: "string",
+                  description: "OPTIONEEL - Energielabel van de nieuwe woning. Gebruik exacte notatie!",
+                  enum: ["A++++ (met garantie)", "A++++", "A+++", "A++", "A+", "A", "B", "C", "D", "E", "F", "G"],
+                },
+              },
+              required: ["waarde_woning"],
+            },
+          },
+          required: [
+            "inkomen_aanvrager",
+            "geboortedatum_aanvrager",
+            "heeft_partner",
+            "waarde_huidige_woning",
+            "bestaande_hypotheek",
+            "nieuwe_woning",
+          ],
+        },
+      },
+      
+      // Tool 7: Opzet hypotheek - Uitgebreid
+      {
+        name: "opzet_hypotheek_uitgebreid",
+        description: "GEAVANCEERDE opzet hypotheek berekening met VOLLEDIGE controle over alle parameters. Geschikt voor zowel starters als doorstromers. Gebruik deze tool ALLEEN als de gebruiker specifiek vraagt om aangepaste parameters zoals: specifieke renteklassen, looptijd in jaren, rentevast periode in jaren, NHG ja/nee. Voor standaard berekeningen gebruik 'opzet_hypotheek_starter' of 'opzet_hypotheek_doorstromer'.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            inkomen_aanvrager: {
+              type: "number",
+              description: "Bruto jaarinkomen van de hoofdaanvrager in euro's",
+            },
+            geboortedatum_aanvrager: {
+              type: "string",
+              description: "Geboortedatum aanvrager in formaat YYYY-MM-DD",
+            },
+            heeft_partner: {
+              type: "boolean",
+              description: "Heeft de aanvrager een partner die mee aanvraagt?",
+            },
+            inkomen_partner: {
+              type: "number",
+              description: "OPTIONEEL - Bruto jaarinkomen van de partner in euro's.",
+            },
+            geboortedatum_partner: {
+              type: "string",
+              description: "OPTIONEEL - Geboortedatum partner in formaat YYYY-MM-DD.",
+            },
+            verplichtingen_pm: {
+              type: "number",
+              description: "Maandelijkse verplichtingen in euro's.",
+              default: 0,
+            },
+            eigen_vermogen: {
+              type: "number",
+              description: "Eigen geld beschikbaar in euro's.",
+              default: 0,
+            },
+            is_doorstromer: {
+              type: "boolean",
+              description: "Is dit een doorstromer met bestaande woning en hypotheek?",
+            },
+            waarde_huidige_woning: {
+              type: "number",
+              description: "OPTIONEEL - Alleen voor doorstromers: huidige woningwaarde in euro's",
+            },
+            bestaande_hypotheek: {
+              type: "object",
+              description: "OPTIONEEL - Alleen voor doorstromers: gegevens van de bestaande hypotheek.",
+              properties: {
+                leningdelen: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      huidige_schuld: {
+                        type: "number",
+                        description: "Restschuld in euro's",
+                      },
+                      huidige_rente: {
+                        type: "number",
+                        description: "Rente als decimaal (bijv. 0.041 voor 4.1%)",
+                      },
+                      resterende_looptijd_in_maanden: {
+                        type: "number",
+                        description: "Resterende looptijd in MAANDEN",
+                      },
+                      rentevasteperiode_maanden: {
+                        type: "number",
+                        description: "Resterende rentevaste periode in MAANDEN",
+                      },
+                      hypotheekvorm: {
+                        type: "string",
+                        description: "Type hypotheek",
+                        enum: ["annuiteit", "lineair", "aflossingsvrij"],
+                      },
+                    },
+                    required: ["huidige_schuld", "huidige_rente", "resterende_looptijd_in_maanden", "rentevasteperiode_maanden", "hypotheekvorm"],
+                  },
+                },
+              },
+              required: ["leningdelen"],
+            },
+            nieuwe_woning: {
+              type: "object",
+              description: "Gegevens van de nieuwe woning die gekocht wordt",
+              properties: {
+                waarde_woning: {
+                  type: "number",
+                  description: "Koopsom van de nieuwe woning in euro's",
+                },
+                bedrag_verbouwen: {
+                  type: "number",
+                  description: "OPTIONEEL - Geschatte kosten voor verbouwing/meerwerk in euro's.",
+                  default: 0,
+                },
+                bedrag_verduurzamen: {
+                  type: "number",
+                  description: "OPTIONEEL - Geschatte kosten voor verduurzaming in euro's.",
+                  default: 0,
+                },
+                kosten_percentage: {
+                  type: "number",
+                  description: "OPTIONEEL - Koperkosten als decimaal (bijv. 0.05 voor 5%). Standaard: 0.05",
+                  default: 0.05,
+                },
+                energielabel: {
+                  type: "string",
+                  description: "OPTIONEEL - Energielabel van de nieuwe woning.",
+                  enum: ["A++++ (met garantie)", "A++++", "A+++", "A++", "A+", "A", "B", "C", "D", "E", "F", "G"],
+                },
+              },
+              required: ["waarde_woning"],
+            },
+            nieuwe_lening: {
+              type: "object",
+              description: "OPTIONEEL - Specifieke parameters voor de nieuwe lening. Gebruik deze sectie om looptijd, rentevast periode, NHG of renteklassen aan te passen.",
+              properties: {
+                looptijd_jaren: {
+                  type: "number",
+                  description: "Looptijd van de hypotheek in JAREN. Standaard: 30 jaar. Voorbeelden: 20, 25, 30",
+                  default: 30,
+                },
+                rentevast_periode_jaren: {
+                  type: "number",
+                  description: "Rentevaste periode in JAREN. Standaard: 10 jaar. Voorbeelden: 5, 10, 15, 20",
+                  default: 10,
+                },
+                nhg: {
+                  type: "boolean",
+                  description: "Nationale Hypotheek Garantie aanvragen? Standaard: false",
+                  default: false,
+                },
+                renteklassen: {
+                  type: "array",
+                  description: "OPTIONEEL - Custom renteklassen met specifieke LTV-grenzen en rentepercentages. Alleen invullen als je specifieke renteklassen wilt definiëren.",
+                  items: {
+                    type: "object",
+                    properties: {
+                      naam: {
+                        type: "string",
+                        description: "Naam van de renteklasse (bijv. 'NHG 0-200', 'Niet-NHG 75-90')",
+                      },
+                      lowerbound_ltv_pct: {
+                        type: "number",
+                        description: "Ondergrens LTV in procenten (bijv. 0.0, 75.0)",
+                      },
+                      higherbound_ltv_pct: {
+                        type: "number",
+                        description: "Bovengrens LTV in procenten (bijv. 75.0, 200.0)",
+                      },
+                      nhg: {
+                        type: "boolean",
+                        description: "Is dit een NHG renteklasse?",
+                      },
+                      rente_jaarlijks_pct: {
+                        type: "number",
+                        description: "Rentepercentage als getal (bijv. 3.2 voor 3.2%, 4.0 voor 4.0%)",
+                      },
+                    },
+                    required: ["naam", "lowerbound_ltv_pct", "higherbound_ltv_pct", "nhg", "rente_jaarlijks_pct"],
+                  },
+                },
+              },
+            },
+          },
+          required: [
+            "inkomen_aanvrager",
+            "geboortedatum_aanvrager",
+            "heeft_partner",
+            "nieuwe_woning",
+          ],
+        },
+      },
     ],
   };
 });
@@ -511,6 +938,94 @@ function formatResponse(data: any, toolName: string): string {
           output += `• ${label}: €${bedrag?.toLocaleString('nl-NL') || '0'} ${bedrag > 0 ? 'extra' : ''}\n`;
         });
       }
+    }
+  }
+
+  // Formattering voor opzet hypotheek tools
+  if (toolName.startsWith("opzet_hypotheek_")) {
+    const toolType = toolName.replace("opzet_hypotheek_", "").toUpperCase();
+    output += `🏠 **OPZET HYPOTHEEK - ${toolType}**\n\n`;
+    
+    if (data.resultaat) {
+      const resultaat = data.resultaat;
+      
+      output += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+      output += `📊 **BENODIGD BEDRAG**\n`;
+      output += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+      
+      if (resultaat.Benodigd_bedrag) {
+        output += `🏡 **Woning koopsom:** €${resultaat.Benodigd_bedrag.Woning_koopsom?.toLocaleString('nl-NL') || 'N/A'}\n`;
+        if (resultaat.Benodigd_bedrag.Verbouwingskosten_meerwerk > 0) {
+          output += `🔨 **Verbouwing/meerwerk:** €${resultaat.Benodigd_bedrag.Verbouwingskosten_meerwerk?.toLocaleString('nl-NL') || 'N/A'}\n`;
+        }
+        if (resultaat.Benodigd_bedrag.Verduurzamingskosten > 0) {
+          output += `♻️ **Verduurzaming:** €${resultaat.Benodigd_bedrag.Verduurzamingskosten?.toLocaleString('nl-NL') || 'N/A'}\n`;
+        }
+        output += `💼 **Koperkosten:** €${resultaat.Benodigd_bedrag.Kosten?.toLocaleString('nl-NL') || 'N/A'}\n`;
+        
+        const totaalBenodigd = (resultaat.Benodigd_bedrag.Woning_koopsom || 0) + 
+                               (resultaat.Benodigd_bedrag.Verbouwingskosten_meerwerk || 0) +
+                               (resultaat.Benodigd_bedrag.Verduurzamingskosten || 0) +
+                               (resultaat.Benodigd_bedrag.Kosten || 0);
+        output += `\n💰 **TOTAAL BENODIGD:** €${totaalBenodigd.toLocaleString('nl-NL')}\n\n`;
+      }
+      
+      output += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+      output += `💵 **FINANCIERING**\n`;
+      output += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+      
+      if (resultaat.Financiering) {
+        output += `🏦 **Hypotheek:** €${resultaat.Financiering.Hypotheek?.toLocaleString('nl-NL') || 'N/A'}\n`;
+        if (resultaat.Financiering.Overwaarde !== undefined && resultaat.Financiering.Overwaarde > 0) {
+          output += `📈 **Overwaarde:** €${resultaat.Financiering.Overwaarde?.toLocaleString('nl-NL') || 'N/A'}\n`;
+        }
+        output += `💎 **Eigen geld:** €${resultaat.Financiering.Eigen_geld?.toLocaleString('nl-NL') || 'N/A'}\n\n`;
+      }
+      
+      output += `📊 **Bruto maandlasten nieuwe lening:** €${resultaat.bruto_maandlasten_nieuwe_lening?.toLocaleString('nl-NL', {minimumFractionDigits: 2, maximumFractionDigits: 2}) || 'N/A'}\n\n`;
+      
+      if (resultaat.gebruikte_hypotheekgegevens) {
+        output += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+        output += `🔍 **HYPOTHEEKGEGEVENS**\n`;
+        output += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+        
+        output += `⚡ **Energielabel:** ${resultaat.gebruikte_hypotheekgegevens.energielabel || 'N/A'}\n`;
+        if (resultaat.gebruikte_hypotheekgegevens.energielabel_toeslag > 0) {
+          output += `💡 **Energielabel toeslag:** €${resultaat.gebruikte_hypotheekgegevens.energielabel_toeslag?.toLocaleString('nl-NL') || 'N/A'}\n`;
+        }
+        output += `🛡️ **NHG toegepast:** ${resultaat.gebruikte_hypotheekgegevens.nhg_toegepast ? 'Ja' : 'Nee'}\n\n`;
+        
+        if (resultaat.gebruikte_hypotheekgegevens.opzet_nieuwe_hypotheek && 
+            Array.isArray(resultaat.gebruikte_hypotheekgegevens.opzet_nieuwe_hypotheek)) {
+          output += `**📋 Opzet nieuwe hypotheek:**\n\n`;
+          
+          resultaat.gebruikte_hypotheekgegevens.opzet_nieuwe_hypotheek.forEach((deel: any, index: number) => {
+            const deelType = deel.type === 'bestaand_leningdeel' ? '🔄 Bestaand leningdeel' : '🆕 Nieuwe lening';
+            output += `${deelType} ${index + 1}:\n`;
+            output += `  • Bedrag: €${deel.hypotheekbedrag?.toLocaleString('nl-NL') || 'N/A'}\n`;
+            output += `  • Rente: ${deel.rente ? (deel.rente * 100).toFixed(2) + '%' : 'N/A'}\n`;
+            output += `  • Hypotheekvorm: ${deel.hypotheekvorm || 'N/A'}\n`;
+            
+            if (deel.type === 'bestaand_leningdeel') {
+              output += `  • Resterende looptijd: ${deel.resterende_looptijd_maanden ? (deel.resterende_looptijd_maanden / 12).toFixed(1) + ' jaar' : 'N/A'}\n`;
+              output += `  • Rentevast periode: ${deel.rentevastperiode_maanden ? (deel.rentevastperiode_maanden / 12).toFixed(1) + ' jaar' : 'N/A'}\n`;
+            } else {
+              output += `  • Looptijd: ${deel.looptijd_maanden ? (deel.looptijd_maanden / 12).toFixed(0) + ' jaar' : 'N/A'}\n`;
+              output += `  • Rentevast periode: ${deel.rentevastperiode_maanden ? (deel.rentevastperiode_maanden / 12).toFixed(0) + ' jaar' : 'N/A'}\n`;
+            }
+            output += `\n`;
+          });
+        }
+      }
+    }
+    
+    if (data.extra_informatie && data.extra_informatie.disclaimers) {
+      output += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+      output += `⚠️ **DISCLAIMERS**\n`;
+      output += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+      data.extra_informatie.disclaimers.forEach((disclaimer: string) => {
+        output += `• ${disclaimer}\n`;
+      });
     }
   }
 
@@ -781,6 +1296,230 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
   }
 
+  // Tool 5: Opzet hypotheek - Starter
+  if (request.params.name === "opzet_hypotheek_starter") {
+    try {
+      if (!request.params.arguments) {
+        throw new Error("Arguments are required");
+      }
+
+      const args = request.params.arguments as unknown as OpzetStarterArguments;
+
+      // Transform naar API format
+      const apiPayload = {
+        aanvrager: {
+          inkomen_aanvrager: args.inkomen_aanvrager,
+          geboortedatum_aanvrager: args.geboortedatum_aanvrager,
+          heeft_partner: args.heeft_partner,
+          inkomen_partner: args.inkomen_partner || 0,
+          geboortedatum_partner: args.geboortedatum_partner || null,
+          verplichtingen_pm: args.verplichtingen_pm || 0,
+          eigen_vermogen: args.eigen_vermogen || 0,
+        },
+        nieuwe_woning: {
+          waarde_woning: args.nieuwe_woning.waarde_woning,
+          bedrag_verbouwen: args.nieuwe_woning.bedrag_verbouwen || 0,
+          bedrag_verduurzamen: args.nieuwe_woning.bedrag_verduurzamen || 0,
+          kosten_percentage: args.nieuwe_woning.kosten_percentage || 0.05,
+          energielabel: normalizeEnergielabel(args.nieuwe_woning.energielabel),
+        },
+      };
+
+      const response = await fetch(REPLIT_API_URL_OPZET, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(apiPayload),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`API error: ${response.status} ${response.statusText} - ${errorText}`);
+      }
+
+      const data = await response.json();
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: formatResponse(data, "opzet_hypotheek_starter"),
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `❌ Error bij het berekenen van opzet hypotheek voor starter: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+
+  // Tool 6: Opzet hypotheek - Doorstromer
+  if (request.params.name === "opzet_hypotheek_doorstromer") {
+    try {
+      if (!request.params.arguments) {
+        throw new Error("Arguments are required");
+      }
+
+      const args = request.params.arguments as unknown as OpzetDoorstromerArguments;
+
+      // Transform naar API format
+      const apiPayload = {
+        aanvrager: {
+          inkomen_aanvrager: args.inkomen_aanvrager,
+          geboortedatum_aanvrager: args.geboortedatum_aanvrager,
+          heeft_partner: args.heeft_partner,
+          inkomen_partner: args.inkomen_partner || 0,
+          geboortedatum_partner: args.geboortedatum_partner || null,
+          verplichtingen_pm: args.verplichtingen_pm || 0,
+          eigen_vermogen: args.eigen_vermogen || 0,
+        },
+        bestaande_lening: {
+          waarde_huidige_woning: args.waarde_huidige_woning,
+          bestaande_leningdelen: args.bestaande_hypotheek.leningdelen,
+        },
+        nieuwe_woning: {
+          waarde_woning: args.nieuwe_woning.waarde_woning,
+          bedrag_verbouwen: args.nieuwe_woning.bedrag_verbouwen || 0,
+          bedrag_verduurzamen: args.nieuwe_woning.bedrag_verduurzamen || 0,
+          kosten_percentage: args.nieuwe_woning.kosten_percentage || 0.05,
+          energielabel: normalizeEnergielabel(args.nieuwe_woning.energielabel),
+        },
+      };
+
+      const response = await fetch(REPLIT_API_URL_OPZET, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(apiPayload),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`API error: ${response.status} ${response.statusText} - ${errorText}`);
+      }
+
+      const data = await response.json();
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: formatResponse(data, "opzet_hypotheek_doorstromer"),
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `❌ Error bij het berekenen van opzet hypotheek voor doorstromer: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+
+  // Tool 7: Opzet hypotheek - Uitgebreid
+  if (request.params.name === "opzet_hypotheek_uitgebreid") {
+    try {
+      if (!request.params.arguments) {
+        throw new Error("Arguments are required");
+      }
+
+      const args = request.params.arguments as unknown as OpzetUitgebreidArguments;
+
+      // Transform naar API format
+      const apiPayload: any = {
+        aanvrager: {
+          inkomen_aanvrager: args.inkomen_aanvrager,
+          geboortedatum_aanvrager: args.geboortedatum_aanvrager,
+          heeft_partner: args.heeft_partner,
+          inkomen_partner: args.inkomen_partner || 0,
+          geboortedatum_partner: args.geboortedatum_partner || null,
+          verplichtingen_pm: args.verplichtingen_pm || 0,
+          eigen_vermogen: args.eigen_vermogen || 0,
+        },
+        nieuwe_woning: {
+          waarde_woning: args.nieuwe_woning.waarde_woning,
+          bedrag_verbouwen: args.nieuwe_woning.bedrag_verbouwen || 0,
+          bedrag_verduurzamen: args.nieuwe_woning.bedrag_verduurzamen || 0,
+          kosten_percentage: args.nieuwe_woning.kosten_percentage || 0.05,
+          energielabel: normalizeEnergielabel(args.nieuwe_woning.energielabel),
+        },
+      };
+
+      // Voeg bestaande lening toe als doorstromer
+      if (args.is_doorstromer && args.waarde_huidige_woning && args.bestaande_hypotheek) {
+        apiPayload.bestaande_lening = {
+          waarde_huidige_woning: args.waarde_huidige_woning,
+          bestaande_leningdelen: args.bestaande_hypotheek.leningdelen,
+        };
+      }
+
+      // Voeg nieuwe lening parameters toe
+      if (args.nieuwe_lening) {
+        apiPayload.nieuwe_lening = {
+          looptijd_jaren: args.nieuwe_lening.looptijd_jaren || 30,
+          rentevast_periode_jaren: args.nieuwe_lening.rentevast_periode_jaren || 10,
+          nhg: args.nieuwe_lening.nhg || false,
+        };
+        
+        // Voeg renteklassen toe indien gespecificeerd
+        if (args.nieuwe_lening.renteklassen && args.nieuwe_lening.renteklassen.length > 0) {
+          apiPayload.nieuwe_lening.renteklassen = args.nieuwe_lening.renteklassen;
+        }
+      }
+
+      const response = await fetch(REPLIT_API_URL_OPZET, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(apiPayload),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`API error: ${response.status} ${response.statusText} - ${errorText}`);
+      }
+
+      const data = await response.json();
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: formatResponse(data, "opzet_hypotheek_uitgebreid"),
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `❌ Error bij uitgebreide opzet hypotheek berekening: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+
   throw new Error(`Onbekende tool: ${request.params.name}`);
 });
 
@@ -788,8 +1527,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("Hypotheek MCP Server v2.0 draait (stdio mode) met 4 tools!");
-  console.error("Tools: bereken_hypotheek_starter, bereken_hypotheek_doorstromer, bereken_hypotheek_uitgebreid, haal_actuele_rentes_op");
+  console.error("Hypotheek MCP Server v3.0 draait (stdio mode) met 7 tools!");
+  console.error("Maximale hypotheek: bereken_hypotheek_starter, bereken_hypotheek_doorstromer, bereken_hypotheek_uitgebreid");
+  console.error("Opzet hypotheek: opzet_hypotheek_starter, opzet_hypotheek_doorstromer, opzet_hypotheek_uitgebreid");
+  console.error("Overig: haal_actuele_rentes_op");
 }
 
 main().catch((error) => {
