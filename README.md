@@ -2,6 +2,10 @@
 
 Een Model Context Protocol (MCP) server voor hypotheekberekeningen en actuele rentetarieven.
 
+<a href="https://glama.ai/mcp/servers/@pace8/mcp-hypotheken-berekenen">
+  <img width="380" height="200" src="https://glama.ai/mcp/servers/@pace8/mcp-hypotheken-berekenen/badge" alt="mcp-hypotheken-berekenen MCP server" />
+</a>
+
 ## ✨ Features
 
 - 🏠 **Maximale hypotheek berekening** - Bereken de maximale hypotheek op basis van inkomen, leeftijd, en bestaande leningen
