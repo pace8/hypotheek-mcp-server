@@ -20,6 +20,7 @@ if (!API_KEY) {
 
 // Type definitions voor de arguments
 interface BaseArguments {
+  session_id?: string; // OPTIONEEL - Sessie ID van de gebruiker uit n8n chat trigger: "When chat message received"
   inkomen_aanvrager: number;
   geboortedatum_aanvrager: string;
   heeft_partner: boolean;
@@ -64,6 +65,7 @@ interface UitgebreidArguments extends BaseArguments {
 
 // Type definitions voor opzet hypotheek
 interface OpzetBaseArguments {
+  session_id?: string; // OPTIONEEL - Sessie ID van de gebruiker uit n8n chat trigger: "When chat message received"
   inkomen_aanvrager: number;
   geboortedatum_aanvrager: string;
   heeft_partner: boolean;
@@ -185,6 +187,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
               description: "Maandelijkse verplichtingen in euro's (andere leningen, alimentatie, etc.). Gebruik 0 als er geen verplichtingen zijn.",
               default: 0,
             },
+            session_id: {
+              type: "string",
+              description: "OPTIONEEL - Sessie ID voor het traceren van de conversatie. Haal deze waarde uit de n8n chat trigger: 'When chat message received' -> sessionId variabele.",
+            },
           },
           required: [
             "inkomen_aanvrager",
@@ -268,6 +274,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                 },
               },
               required: ["leningdelen"],
+            },
+            session_id: {
+              type: "string",
+              description: "OPTIONEEL - Sessie ID voor het traceren van de conversatie. Haal deze waarde uit de n8n chat trigger: 'When chat message received' -> sessionId variabele.",
             },
           },
           required: [
@@ -405,6 +415,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
               },
               required: ["looptijd_maanden", "rentevaste_periode_maanden", "hypotheekvorm"],
             },
+            session_id: {
+              type: "string",
+              description: "OPTIONEEL - Sessie ID voor het traceren van de conversatie. Haal deze waarde uit de n8n chat trigger: 'When chat message received' -> sessionId variabele.",
+            },
           },
           required: [
             "inkomen_aanvrager",
@@ -492,6 +506,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                 },
               },
               required: ["waarde_woning"],
+            },
+            session_id: {
+              type: "string",
+              description: "OPTIONEEL - Sessie ID voor het traceren van de conversatie. Haal deze waarde uit de n8n chat trigger: 'When chat message received' -> sessionId variabele.",
             },
           },
           required: [
@@ -612,6 +630,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                 },
               },
               required: ["waarde_woning"],
+            },
+            session_id: {
+              type: "string",
+              description: "OPTIONEEL - Sessie ID voor het traceren van de conversatie. Haal deze waarde uit de n8n chat trigger: 'When chat message received' -> sessionId variabele.",
             },
           },
           required: [
@@ -788,6 +810,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                   },
                 },
               },
+            },
+            session_id: {
+              type: "string",
+              description: "OPTIONEEL - Sessie ID voor het traceren van de conversatie. Haal deze waarde uit de n8n chat trigger: 'When chat message received' -> sessionId variabele.",
             },
           },
           required: [
@@ -1045,7 +1071,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const args = request.params.arguments as unknown as BaseArguments;
 
       // Transform naar API format
-      const apiPayload = {
+      const apiPayload: any = {
         aanvragers: {
           inkomen_aanvrager: args.inkomen_aanvrager,
           geboortedatum_aanvrager: args.geboortedatum_aanvrager,
@@ -1055,6 +1081,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           verplichtingen_pm: args.verplichtingen_pm || 0,
         },
       };
+
+      // Voeg session_id toe indien aanwezig
+      if (args.session_id) {
+        apiPayload.session_id = args.session_id;
+      }
 
       const response = await fetch(REPLIT_API_URL_BEREKENEN, {
         method: "POST",
@@ -1104,7 +1135,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const args = request.params.arguments as unknown as DoorstromerArguments;
 
       // Transform naar API format
-      const apiPayload = {
+      const apiPayload: any = {
         aanvragers: {
           inkomen_aanvrager: args.inkomen_aanvrager,
           geboortedatum_aanvrager: args.geboortedatum_aanvrager,
@@ -1118,6 +1149,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           bestaande_leningdelen: args.bestaande_hypotheek.leningdelen,
         },
       };
+
+      // Voeg session_id toe indien aanwezig
+      if (args.session_id) {
+        apiPayload.session_id = args.session_id;
+      }
 
       const response = await fetch(REPLIT_API_URL_BEREKENEN, {
         method: "POST",
@@ -1188,6 +1224,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           waarde_huidige_woning: args.waarde_huidige_woning,
           bestaande_leningdelen: args.bestaande_hypotheek.leningdelen,
         };
+      }
+
+      // Voeg session_id toe indien aanwezig
+      if (args.session_id) {
+        apiPayload.session_id = args.session_id;
       }
 
       // Voeg nieuwe hypotheek parameters toe
@@ -1306,7 +1347,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const args = request.params.arguments as unknown as OpzetStarterArguments;
 
       // Transform naar API format
-      const apiPayload = {
+      const apiPayload: any = {
         aanvrager: {
           inkomen_aanvrager: args.inkomen_aanvrager,
           geboortedatum_aanvrager: args.geboortedatum_aanvrager,
@@ -1324,6 +1365,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           energielabel: normalizeEnergielabel(args.nieuwe_woning.energielabel),
         },
       };
+
+      // Voeg session_id toe indien aanwezig
+      if (args.session_id) {
+        apiPayload.session_id = args.session_id;
+      }
 
       const response = await fetch(REPLIT_API_URL_OPZET, {
         method: "POST",
@@ -1372,7 +1418,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const args = request.params.arguments as unknown as OpzetDoorstromerArguments;
 
       // Transform naar API format
-      const apiPayload = {
+      const apiPayload: any = {
         aanvrager: {
           inkomen_aanvrager: args.inkomen_aanvrager,
           geboortedatum_aanvrager: args.geboortedatum_aanvrager,
@@ -1394,6 +1440,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           energielabel: normalizeEnergielabel(args.nieuwe_woning.energielabel),
         },
       };
+
+      // Voeg session_id toe indien aanwezig
+      if (args.session_id) {
+        apiPayload.session_id = args.session_id;
+      }
 
       const response = await fetch(REPLIT_API_URL_OPZET, {
         method: "POST",
@@ -1467,6 +1518,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           waarde_huidige_woning: args.waarde_huidige_woning,
           bestaande_leningdelen: args.bestaande_hypotheek.leningdelen,
         };
+      }
+
+      // Voeg session_id toe indien aanwezig
+      if (args.session_id) {
+        apiPayload.session_id = args.session_id;
       }
 
       // Voeg nieuwe lening parameters toe
