@@ -6,17 +6,33 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
+// ============================================================================
+// FASE 1: Nieuwe imports voor type safety, validatie, logging en config
+// ============================================================================
+import { createLogger } from './utils/logger.js';
+import { getConfig } from './config/index.js';
+import { 
+  validateBaseArguments, 
+  validateDoorstromerArguments,
+  validateLeningdeel,
+  validateBestaandeHypotheek
+} from './validation/schemas.js';
+import { ValidationError, normalizeEnergielabel } from './types/index.js';
 
-// Je Replit API URLs en API Key
-const REPLIT_API_URL_BEREKENEN = "https://digital-mortgage-calculator.replit.app/berekenen/maximaal";
-const REPLIT_API_URL_OPZET = "https://digital-mortgage-calculator.replit.app/berekenen/opzet-hypotheek";
-const REPLIT_API_URL_RENTES = "https://digital-mortgage-calculator.replit.app/rentes";
-const API_KEY = process.env.REPLIT_API_KEY;
 
-if (!API_KEY) {
-  console.error("FOUT: REPLIT_API_KEY environment variabele is niet ingesteld!");
-  process.exit(1);
-}
+// ============================================================================
+// FASE 1: Config laden (vervangt hardcoded URLs en API key check)
+// ============================================================================
+const config = getConfig(); // Dit gooit automatisch error als REPLIT_API_KEY ontbreekt
+
+// API URLs uit config
+const REPLIT_API_URL_BEREKENEN = config.replitApiUrlBerekenen;
+const REPLIT_API_URL_OPZET = config.replitApiUrlOpzet;
+const REPLIT_API_URL_RENTES = config.replitApiUrlRentes;
+const API_KEY = config.replitApiKey;
+
+// Oude check niet meer nodig - getConfig() doet dit al
+
 
 // Type definitions voor de arguments
 interface BaseArguments {
@@ -119,7 +135,7 @@ interface OpzetUitgebreidArguments extends OpzetBaseArguments {
 const server = new Server(
   {
     name: "hypotheek-berekening-server",
-    version: "3.0.0",
+    version: "4.0.0",
   },
   {
     capabilities: {
@@ -129,27 +145,11 @@ const server = new Server(
 );
 
 // Helper functie om energielabel te normaliseren
-function normalizeEnergielabel(label: string | undefined): string | undefined {
-  if (!label) return undefined;
-  
-  // Map van veelvoorkomende fouten naar correcte waarden
-  const labelMap: Record<string, string> = {
-    'A++++': 'A++++',
-    'A++++ (met garantie)': 'A++++ (met garantie)',
-    'A+++': 'A+++',
-    'A++': 'A++',
-    'A+': 'A+',
-    'A': 'A',
-    'B': 'B',
-    'C': 'C',
-    'D': 'D',
-    'E': 'E',
-    'F': 'F',
-    'G': 'G',
-  };
-  
-  return labelMap[label] || label;
-}
+// ============================================================================
+// FASE 1: normalizeEnergielabel is nu geïmporteerd uit types/index.ts
+// Oude functie hieronder is niet meer nodig, maar we laten hem staan voor backwards compat
+// ============================================================================
+// (verwijderd in Fase 1)
 
 // Lijst met beschikbare tools
 server.setRequestHandler(ListToolsRequestSchema, async () => {
@@ -1070,7 +1070,36 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       const args = request.params.arguments as unknown as BaseArguments;
 
-      // Transform naar API format
+      
+
+// ========================================================================
+// FASE 1: Validatie en logging voor bereken_hypotheek_starter
+// ========================================================================
+const logger = createLogger(args.session_id);
+try {
+  validateBaseArguments(args);
+  logger.info('Validation passed', { 
+    tool: 'bereken_hypotheek_starter',
+    heeft_partner: args.heeft_partner,
+    has_session_id: !!args.session_id
+  });
+} catch (validationError) {
+  if (validationError instanceof ValidationError) {
+    logger.validationWarning(
+      validationError.message,
+      // @ts-ignore
+      validationError.field,
+      // @ts-ignore
+      validationError.value
+    );
+    // Fase 1: Niet blokkeren, alleen warning
+  } else {
+    logger.warn('Unexpected validation error', { error: String(validationError) });
+  }
+}
+// ========================================================================
+
+// Transform naar API format
       const apiPayload: any = {
         aanvragers: {
           inkomen_aanvrager: args.inkomen_aanvrager,
@@ -1134,7 +1163,35 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       const args = request.params.arguments as unknown as DoorstromerArguments;
 
-      // Transform naar API format
+      
+
+// ========================================================================
+// FASE 1: Validatie en logging voor bereken_hypotheek_doorstromer
+// ========================================================================
+const logger = createLogger(args.session_id);
+try {
+  validateDoorstromerArguments(args);
+  logger.info('Validation passed', { 
+    tool: 'bereken_hypotheek_doorstromer',
+    woningwaarde: args.waarde_huidige_woning,
+    aantal_leningdelen: args.bestaande_hypotheek?.leningdelen?.length
+  });
+} catch (validationError) {
+  if (validationError instanceof ValidationError) {
+    logger.validationWarning(
+      validationError.message,
+      // @ts-ignore
+      validationError.field,
+      // @ts-ignore
+      validationError.value
+    );
+  } else {
+    logger.warn('Unexpected validation error', { error: String(validationError) });
+  }
+}
+// ========================================================================
+
+// Transform naar API format
       const apiPayload: any = {
         aanvragers: {
           inkomen_aanvrager: args.inkomen_aanvrager,
@@ -1202,7 +1259,42 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       const args = request.params.arguments as unknown as UitgebreidArguments;
       
-      // Debug: log de ontvangen arguments
+      
+
+// ========================================================================
+// FASE 1: Validatie en logging voor bereken_hypotheek_uitgebreid
+// ========================================================================
+const logger = createLogger(args.session_id);
+try {
+  // Valideer base arguments
+  validateBaseArguments(args);
+  // Als doorstromer, valideer ook die gegevens
+  if ((args as any).is_doorstromer && (args as any).bestaande_hypotheek) {
+    validateBestaandeHypotheek((args as any).bestaande_hypotheek);
+  }
+  logger.info('Validation passed', { 
+    tool: 'bereken_hypotheek_uitgebreid',
+    // @ts-ignore
+    is_doorstromer: args.is_doorstromer,
+    // @ts-ignore
+    heeft_custom_params: !!args.nieuwe_hypotheek
+  });
+} catch (validationError) {
+  if (validationError instanceof ValidationError) {
+    logger.validationWarning(
+      validationError.message,
+      // @ts-ignore
+      validationError.field,
+      // @ts-ignore
+      validationError.value
+    );
+  } else {
+    logger.warn('Unexpected validation error', { error: String(validationError) });
+  }
+}
+// ========================================================================
+
+// Debug: log de ontvangen arguments
       console.error("=== UITGEBREID TOOL - Ontvangen arguments ===");
       console.error(JSON.stringify(args, null, 2));
       
@@ -1245,7 +1337,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
         
         // Normaliseer energielabel
-        const energielabel = normalizeEnergielabel(args.nieuwe_hypotheek.energielabel);
+        const energielabel = normalizeEnergielabel(args.nieuwe_hypotheek.energielabel || '');
         
         apiPayload.nieuwe_lening = {
           looptijd_maanden: args.nieuwe_hypotheek.looptijd_maanden || 360,
@@ -1346,7 +1438,52 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       const args = request.params.arguments as unknown as OpzetStarterArguments;
 
-      // Transform naar API format
+      
+
+
+
+// ========================================================================
+// FASE 1: Logging voor haal_actuele_rentes_op (geen validatie nodig)
+// ========================================================================
+const loggerRentes = createLogger(); // Geen session_id beschikbaar
+loggerRentes.info('Fetching current rates', { tool: 'haal_actuele_rentes_op' });
+// ========================================================================
+
+// ========================================================================
+// FASE 1: Validatie en logging voor opzet_hypotheek_starter
+// ========================================================================
+const logger = createLogger(args.session_id);
+try {
+  // Valideer base arguments
+  validateBaseArguments({
+    inkomen_aanvrager: args.inkomen_aanvrager,
+    geboortedatum_aanvrager: args.geboortedatum_aanvrager,
+    heeft_partner: args.heeft_partner,
+    inkomen_partner: args.inkomen_partner,
+    geboortedatum_partner: args.geboortedatum_partner,
+    verplichtingen_pm: args.verplichtingen_pm
+  } as any);
+  logger.info('Validation passed', { 
+    tool: 'opzet_hypotheek_starter',
+    woningwaarde: args.nieuwe_woning?.waarde_woning,
+    heeft_verbouwing: !!args.nieuwe_woning?.bedrag_verbouwen
+  });
+} catch (validationError) {
+  if (validationError instanceof ValidationError) {
+    logger.validationWarning(
+      validationError.message,
+      // @ts-ignore
+      validationError.field,
+      // @ts-ignore
+      validationError.value
+    );
+  } else {
+    logger.warn('Unexpected validation error', { error: String(validationError) });
+  }
+}
+// ========================================================================
+
+// Transform naar API format
       const apiPayload: any = {
         aanvrager: {
           inkomen_aanvrager: args.inkomen_aanvrager,
@@ -1362,7 +1499,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           bedrag_verbouwen: args.nieuwe_woning.bedrag_verbouwen || 0,
           bedrag_verduurzamen: args.nieuwe_woning.bedrag_verduurzamen || 0,
           kosten_percentage: args.nieuwe_woning.kosten_percentage || 0.05,
-          energielabel: normalizeEnergielabel(args.nieuwe_woning.energielabel),
+          energielabel: normalizeEnergielabel(args.nieuwe_woning.energielabel || ''),
         },
       };
 
@@ -1417,7 +1554,43 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       const args = request.params.arguments as unknown as OpzetDoorstromerArguments;
 
-      // Transform naar API format
+      
+
+// ========================================================================
+// FASE 1: Validatie en logging voor opzet_hypotheek_doorstromer
+// ========================================================================
+const logger = createLogger(args.session_id);
+try {
+  validateBaseArguments({
+    inkomen_aanvrager: args.inkomen_aanvrager,
+    geboortedatum_aanvrager: args.geboortedatum_aanvrager,
+    heeft_partner: args.heeft_partner,
+    inkomen_partner: args.inkomen_partner,
+    geboortedatum_partner: args.geboortedatum_partner,
+    verplichtingen_pm: args.verplichtingen_pm
+  } as any);
+  validateBestaandeHypotheek(args.bestaande_hypotheek as any);
+  logger.info('Validation passed', { 
+    tool: 'opzet_hypotheek_doorstromer',
+    woningwaarde_huidig: args.waarde_huidige_woning,
+    woningwaarde_nieuw: args.nieuwe_woning?.waarde_woning
+  });
+} catch (validationError) {
+  if (validationError instanceof ValidationError) {
+    logger.validationWarning(
+      validationError.message,
+      // @ts-ignore
+      validationError.field,
+      // @ts-ignore
+      validationError.value
+    );
+  } else {
+    logger.warn('Unexpected validation error', { error: String(validationError) });
+  }
+}
+// ========================================================================
+
+// Transform naar API format
       const apiPayload: any = {
         aanvrager: {
           inkomen_aanvrager: args.inkomen_aanvrager,
@@ -1437,7 +1610,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           bedrag_verbouwen: args.nieuwe_woning.bedrag_verbouwen || 0,
           bedrag_verduurzamen: args.nieuwe_woning.bedrag_verduurzamen || 0,
           kosten_percentage: args.nieuwe_woning.kosten_percentage || 0.05,
-          energielabel: normalizeEnergielabel(args.nieuwe_woning.energielabel),
+          energielabel: normalizeEnergielabel(args.nieuwe_woning.energielabel || ''),
         },
       };
 
@@ -1492,7 +1665,45 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       const args = request.params.arguments as unknown as OpzetUitgebreidArguments;
 
-      // Transform naar API format
+      
+
+// ========================================================================
+// FASE 1: Validatie en logging voor opzet_hypotheek_uitgebreid
+// ========================================================================
+const logger = createLogger(args.session_id);
+try {
+  validateBaseArguments({
+    inkomen_aanvrager: args.inkomen_aanvrager,
+    geboortedatum_aanvrager: args.geboortedatum_aanvrager,
+    heeft_partner: args.heeft_partner,
+    inkomen_partner: args.inkomen_partner,
+    geboortedatum_partner: args.geboortedatum_partner,
+    verplichtingen_pm: args.verplichtingen_pm
+  } as any);
+  if ((args as any).is_doorstromer && (args as any).bestaande_hypotheek) {
+    validateBestaandeHypotheek((args as any).bestaande_hypotheek);
+  }
+  logger.info('Validation passed', { 
+    tool: 'opzet_hypotheek_uitgebreid',
+    // @ts-ignore
+    is_doorstromer: args.is_doorstromer
+  });
+} catch (validationError) {
+  if (validationError instanceof ValidationError) {
+    logger.validationWarning(
+      validationError.message,
+      // @ts-ignore
+      validationError.field,
+      // @ts-ignore
+      validationError.value
+    );
+  } else {
+    logger.warn('Unexpected validation error', { error: String(validationError) });
+  }
+}
+// ========================================================================
+
+// Transform naar API format
       const apiPayload: any = {
         aanvrager: {
           inkomen_aanvrager: args.inkomen_aanvrager,
@@ -1508,7 +1719,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           bedrag_verbouwen: args.nieuwe_woning.bedrag_verbouwen || 0,
           bedrag_verduurzamen: args.nieuwe_woning.bedrag_verduurzamen || 0,
           kosten_percentage: args.nieuwe_woning.kosten_percentage || 0.05,
-          energielabel: normalizeEnergielabel(args.nieuwe_woning.energielabel),
+          energielabel: normalizeEnergielabel(args.nieuwe_woning.energielabel || ''),
         },
       };
 
