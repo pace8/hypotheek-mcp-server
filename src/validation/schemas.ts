@@ -1,8 +1,10 @@
-/**
- * Runtime Validation Schemas met Zod (Fase 1)
- * 
- * Dit bestand bevat Zod schemas voor runtime input validatie.
- * Fase 1: Warning mode - log validatie fouten maar block niet.
+/*
+ * Runtime Validation Schemas met Zod (Fase 2)
+ *
+ * Dit bestand bevat Zod schemas en validation helpers voor runtime input
+ * validatie. In Fase 2 handelen we validation errors als blocking errors:
+ * validatiefouten worden direct gegooid als `ValidationError` zodat ze
+ * door de caller kunnen worden afgehandeld.
  */
 
 import { z } from 'zod';
@@ -89,127 +91,115 @@ export function validateAge(birthDate: string, field: string): void {
  * Valideer base arguments (gebruikt door alle tools)
  */
 export function validateBaseArguments(args: unknown): void {
-  try {
-    // Type check
-    if (typeof args !== 'object' || args === null) {
-      throw new ValidationError(
-        ErrorCode.INVALID_INPUT,
-        'Arguments moet een object zijn',
-        'arguments'
-      );
-    }
-    
-    const input = args as Record<string, unknown>;
-    
-    // Valideer verplichte velden
-    if (typeof input.inkomen_aanvrager !== 'number') {
-      throw new ValidationError(
-        ErrorCode.INVALID_INPUT,
-        'inkomen_aanvrager moet een getal zijn',
-        'inkomen_aanvrager',
-        input.inkomen_aanvrager
-      );
-    }
-    
-    if (typeof input.geboortedatum_aanvrager !== 'string') {
-      throw new ValidationError(
-        ErrorCode.INVALID_INPUT,
-        'geboortedatum_aanvrager moet een string zijn',
-        'geboortedatum_aanvrager',
-        input.geboortedatum_aanvrager
-      );
-    }
-    
-    if (typeof input.heeft_partner !== 'boolean') {
-      throw new ValidationError(
-        ErrorCode.INVALID_INPUT,
-        'heeft_partner moet een boolean zijn',
-        'heeft_partner',
-        input.heeft_partner
-      );
-    }
-    
-    // Valideer inkomen range
-    if (input.inkomen_aanvrager < ValidationConstraints.INKOMEN.MIN || 
-        input.inkomen_aanvrager > ValidationConstraints.INKOMEN.MAX) {
-      throw new ValidationError(
-        ErrorCode.INCOME_OUT_OF_RANGE,
-        `Inkomen aanvrager moet tussen €${ValidationConstraints.INKOMEN.MIN} en €${ValidationConstraints.INKOMEN.MAX} liggen`,
-        'inkomen_aanvrager',
-        input.inkomen_aanvrager
-      );
-    }
-    
-    // Valideer leeftijd aanvrager
-    validateAge(input.geboortedatum_aanvrager, 'aanvrager');
-    
-    // Valideer partner gegevens indien heeft_partner = true
-    if (input.heeft_partner) {
-      if (input.inkomen_partner !== undefined) {
-        if (typeof input.inkomen_partner !== 'number') {
-          throw new ValidationError(
-            ErrorCode.INVALID_INPUT,
-            'inkomen_partner moet een getal zijn',
-            'inkomen_partner',
-            input.inkomen_partner
-          );
-        }
-        
-        if (input.inkomen_partner < ValidationConstraints.INKOMEN.MIN || 
-            input.inkomen_partner > ValidationConstraints.INKOMEN.MAX) {
-          throw new ValidationError(
-            ErrorCode.INCOME_OUT_OF_RANGE,
-            `Inkomen partner moet tussen €${ValidationConstraints.INKOMEN.MIN} en €${ValidationConstraints.INKOMEN.MAX} liggen`,
-            'inkomen_partner',
-            input.inkomen_partner
-          );
-        }
-      }
-      
-      if (input.geboortedatum_partner) {
-        if (typeof input.geboortedatum_partner !== 'string') {
-          throw new ValidationError(
-            ErrorCode.INVALID_INPUT,
-            'geboortedatum_partner moet een string zijn',
-            'geboortedatum_partner',
-            input.geboortedatum_partner
-          );
-        }
-        validateAge(input.geboortedatum_partner, 'partner');
-      }
-    }
-    
-    // Valideer verplichtingen
-    if (input.verplichtingen_pm !== undefined) {
-      if (typeof input.verplichtingen_pm !== 'number') {
-        throw new ValidationError(
-          ErrorCode.INVALID_INPUT,
-          'verplichtingen_pm moet een getal zijn',
-          'verplichtingen_pm',
-          input.verplichtingen_pm
-        );
-      }
-      
-      if (input.verplichtingen_pm < ValidationConstraints.VERPLICHTINGEN.MIN || 
-          input.verplichtingen_pm > ValidationConstraints.VERPLICHTINGEN.MAX) {
-        throw new ValidationError(
-          ErrorCode.INVALID_INPUT,
-          `Verplichtingen moet tussen €${ValidationConstraints.VERPLICHTINGEN.MIN} en €${ValidationConstraints.VERPLICHTINGEN.MAX} liggen`,
-          'verplichtingen_pm',
-          input.verplichtingen_pm
-        );
-      }
-    }
-    
-  } catch (error) {
-    if (error instanceof ValidationError) {
-      throw error;
-    }
+  // Type check
+  if (typeof args !== 'object' || args === null) {
     throw new ValidationError(
       ErrorCode.INVALID_INPUT,
-      `Validatie fout: ${error instanceof Error ? error.message : String(error)}`,
+      'Arguments moet een object zijn',
       'arguments'
     );
+  }
+
+  const input = args as Record<string, unknown>;
+
+  // Valideer verplichte velden
+  if (typeof input.inkomen_aanvrager !== 'number') {
+    throw new ValidationError(
+      ErrorCode.INVALID_INPUT,
+      'inkomen_aanvrager moet een getal zijn',
+      'inkomen_aanvrager',
+      input.inkomen_aanvrager
+    );
+  }
+
+  if (typeof input.geboortedatum_aanvrager !== 'string') {
+    throw new ValidationError(
+      ErrorCode.INVALID_INPUT,
+      'geboortedatum_aanvrager moet een string zijn',
+      'geboortedatum_aanvrager',
+      input.geboortedatum_aanvrager
+    );
+  }
+
+  if (typeof input.heeft_partner !== 'boolean') {
+    throw new ValidationError(
+      ErrorCode.INVALID_INPUT,
+      'heeft_partner moet een boolean zijn',
+      'heeft_partner',
+      input.heeft_partner
+    );
+  }
+
+  // Valideer inkomen range
+  if (input.inkomen_aanvrager < ValidationConstraints.INKOMEN.MIN || 
+      input.inkomen_aanvrager > ValidationConstraints.INKOMEN.MAX) {
+    throw new ValidationError(
+      ErrorCode.INCOME_OUT_OF_RANGE,
+      `Inkomen aanvrager moet tussen €${ValidationConstraints.INKOMEN.MIN} en €${ValidationConstraints.INKOMEN.MAX} liggen`,
+      'inkomen_aanvrager',
+      input.inkomen_aanvrager
+    );
+  }
+
+  // Valideer leeftijd aanvrager
+  validateAge(input.geboortedatum_aanvrager, 'aanvrager');
+
+  // Valideer partner gegevens indien heeft_partner = true
+  if (input.heeft_partner) {
+    if (input.inkomen_partner !== undefined) {
+      if (typeof input.inkomen_partner !== 'number') {
+        throw new ValidationError(
+          ErrorCode.INVALID_INPUT,
+          'inkomen_partner moet een getal zijn',
+          'inkomen_partner',
+          input.inkomen_partner
+        );
+      }
+
+      if (input.inkomen_partner < ValidationConstraints.INKOMEN.MIN || 
+          input.inkomen_partner > ValidationConstraints.INKOMEN.MAX) {
+        throw new ValidationError(
+          ErrorCode.INCOME_OUT_OF_RANGE,
+          `Inkomen partner moet tussen €${ValidationConstraints.INKOMEN.MIN} en €${ValidationConstraints.INKOMEN.MAX} liggen`,
+          'inkomen_partner',
+          input.inkomen_partner
+        );
+      }
+    }
+
+    if (input.geboortedatum_partner) {
+      if (typeof input.geboortedatum_partner !== 'string') {
+        throw new ValidationError(
+          ErrorCode.INVALID_INPUT,
+          'geboortedatum_partner moet een string zijn',
+          'geboortedatum_partner',
+          input.geboortedatum_partner
+        );
+      }
+      validateAge(input.geboortedatum_partner, 'partner');
+    }
+  }
+
+  // Valideer verplichtingen
+  if (input.verplichtingen_pm !== undefined) {
+    if (typeof input.verplichtingen_pm !== 'number') {
+      throw new ValidationError(
+        ErrorCode.INVALID_INPUT,
+        'verplichtingen_pm moet een getal zijn',
+        'verplichtingen_pm',
+        input.verplichtingen_pm
+      );
+    }
+
+    if (input.verplichtingen_pm < ValidationConstraints.VERPLICHTINGEN.MIN || 
+        input.verplichtingen_pm > ValidationConstraints.VERPLICHTINGEN.MAX) {
+      throw new ValidationError(
+        ErrorCode.INVALID_INPUT,
+        `Verplichtingen moet tussen €${ValidationConstraints.VERPLICHTINGEN.MIN} en €${ValidationConstraints.VERPLICHTINGEN.MAX} liggen`,
+        'verplichtingen_pm',
+        input.verplichtingen_pm
+      );
+    }
   }
 }
 

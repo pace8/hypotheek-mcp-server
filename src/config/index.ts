@@ -44,13 +44,21 @@ export interface ServerConfig {
  */
 export function loadConfig(): ServerConfig {
   // Check verplichte variabelen
-  const apiKey = process.env.REPLIT_API_KEY;
+  // Allow tests to run without requiring the real REPLIT_API_KEY.
+  // In production and development we still require the variable, but in
+  // the test environment we provide a harmless default to avoid throwing
+  // during unit tests that instantiate API clients or middleware.
+  let apiKey = process.env.REPLIT_API_KEY;
   if (!apiKey) {
-    throw new ValidationError(
-      ErrorCode.CONFIGURATION_ERROR,
-      'REPLIT_API_KEY environment variabele is niet ingesteld. Zet deze in je .env file.',
-      'REPLIT_API_KEY'
-    );
+    if ((process.env.NODE_ENV || 'development') === 'test') {
+      apiKey = 'test-replit-api-key';
+    } else {
+      throw new ValidationError(
+        ErrorCode.CONFIGURATION_ERROR,
+        'REPLIT_API_KEY environment variabele is niet ingesteld. Zet deze in je .env file.',
+        'REPLIT_API_KEY'
+      );
+    }
   }
   
   // Base URL met default

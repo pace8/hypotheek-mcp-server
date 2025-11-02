@@ -17,7 +17,9 @@ import {
   validateLeningdeel,
   validateBestaandeHypotheek
 } from './validation/schemas.js';
-import { ValidationError, normalizeEnergielabel } from './types/index.js';
+import { ValidationError, normalizeEnergielabel, APIError, ErrorCode } from './types/index.js';
+import { getApiClient } from './api/client.js';
+import { enforceRateLimit } from './middleware/rate-limiter.js';
 
 
 // ============================================================================
@@ -1116,38 +1118,60 @@ try {
         apiPayload.session_id = args.session_id;
       }
 
-      const response = await fetch(REPLIT_API_URL_BEREKENEN, {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(apiPayload),
-      });
+      // Rate limit enforcement
+      enforceRateLimit(args.session_id);
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`API error: ${response.status} ${response.statusText} - ${errorText}`);
+      // Use API client with retry/timeout and correlation id
+      const apiClient = getApiClient();
+      try {
+        const apiResponse = await apiClient.post(REPLIT_API_URL_BEREKENEN, apiPayload, { correlationId: args.session_id });
+        const data = apiResponse.data;
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: formatResponse(data, "bereken_hypotheek_starter"),
+            },
+          ],
+        };
+      } catch (err) {
+        throw err;
       }
 
-      const data = await response.json();
-
-      return {
-        content: [
-          {
-            type: "text",
-            text: formatResponse(data, "bereken_hypotheek_starter"),
-          },
-        ],
-      };
     } catch (error) {
-      return {
-        content: [
-          {
+      const sessionId = request.params.arguments && (request.params.arguments as any).session_id;
+      // Structured error responses for ValidationError and APIError
+      if (error instanceof ValidationError) {
+        return {
+          content: [{
             type: "text",
-            text: `❌ Error bij het berekenen van hypotheek voor starter: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
+            text: JSON.stringify(error.toStructured(sessionId), null, 2)
+          }],
+          isError: true,
+        };
+      }
+
+      if (error instanceof APIError) {
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify(error.toStructured(sessionId), null, 2)
+          }],
+          isError: true,
+        };
+      }
+
+      // Unknown error
+      return {
+        content: [{
+          type: "text",
+          text: JSON.stringify({
+            code: ErrorCode.UNKNOWN_ERROR,
+            message: error instanceof Error ? error.message : String(error),
+            correlation_id: sessionId
+          }, null, 2)
+        }],
         isError: true,
       };
     }
@@ -1212,38 +1236,41 @@ try {
         apiPayload.session_id = args.session_id;
       }
 
-      const response = await fetch(REPLIT_API_URL_BEREKENEN, {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(apiPayload),
-      });
+      // Rate limit enforcement
+      enforceRateLimit(args.session_id);
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`API error: ${response.status} ${response.statusText} - ${errorText}`);
+      const apiClient = getApiClient();
+      try {
+        const apiResponse = await apiClient.post(REPLIT_API_URL_BEREKENEN, apiPayload, { correlationId: args.session_id });
+        const data = apiResponse.data;
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: formatResponse(data, "bereken_hypotheek_doorstromer"),
+            },
+          ],
+        };
+      } catch (err) {
+        throw err;
       }
-
-      const data = await response.json();
-
-      return {
-        content: [
-          {
-            type: "text",
-            text: formatResponse(data, "bereken_hypotheek_doorstromer"),
-          },
-        ],
-      };
     } catch (error) {
+      const sessionId = request.params.arguments && (request.params.arguments as any).session_id;
+      if (error instanceof ValidationError) {
+        return {
+          content: [{ type: 'text', text: JSON.stringify(error.toStructured(sessionId), null, 2) }],
+          isError: true,
+        };
+      }
+      if (error instanceof APIError) {
+        return {
+          content: [{ type: 'text', text: JSON.stringify(error.toStructured(sessionId), null, 2) }],
+          isError: true,
+        };
+      }
       return {
-        content: [
-          {
-            type: "text",
-            text: `❌ Error bij het berekenen van hypotheek voor doorstromer: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
+        content: [{ type: 'text', text: JSON.stringify({ code: ErrorCode.UNKNOWN_ERROR, message: error instanceof Error ? error.message : String(error), correlation_id: sessionId }, null, 2) }],
         isError: true,
       };
     }
@@ -1354,38 +1381,41 @@ try {
       console.error("=== UITGEBREID TOOL - API Payload ===");
       console.error(JSON.stringify(apiPayload, null, 2));
 
-      const response = await fetch(REPLIT_API_URL_BEREKENEN, {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(apiPayload),
-      });
+      // Rate limit enforcement
+      enforceRateLimit(args.session_id);
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`API error: ${response.status} ${response.statusText} - ${errorText}`);
+      const apiClient = getApiClient();
+      try {
+        const apiResponse = await apiClient.post(REPLIT_API_URL_BEREKENEN, apiPayload, { correlationId: args.session_id });
+        const data = apiResponse.data;
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: formatResponse(data, "bereken_hypotheek_uitgebreid"),
+            },
+          ],
+        };
+      } catch (err) {
+        throw err;
       }
-
-      const data = await response.json();
-
-      return {
-        content: [
-          {
-            type: "text",
-            text: formatResponse(data, "bereken_hypotheek_uitgebreid"),
-          },
-        ],
-      };
     } catch (error) {
+      const sessionId = request.params.arguments && (request.params.arguments as any).session_id;
+      if (error instanceof ValidationError) {
+        return {
+          content: [{ type: 'text', text: JSON.stringify(error.toStructured(sessionId), null, 2) }],
+          isError: true,
+        };
+      }
+      if (error instanceof APIError) {
+        return {
+          content: [{ type: 'text', text: JSON.stringify(error.toStructured(sessionId), null, 2) }],
+          isError: true,
+        };
+      }
       return {
-        content: [
-          {
-            type: "text",
-            text: `❌ Error bij uitgebreide hypotheekberekening: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
+        content: [{ type: 'text', text: JSON.stringify({ code: ErrorCode.UNKNOWN_ERROR, message: error instanceof Error ? error.message : String(error), correlation_id: sessionId }, null, 2) }],
         isError: true,
       };
     }
@@ -1394,36 +1424,41 @@ try {
   // Tool 4: Actuele rentes
   if (request.params.name === "haal_actuele_rentes_op") {
     try {
-      const response = await fetch(REPLIT_API_URL_RENTES, {
-        method: "GET",
-        headers: {
-          "Authorization": `Bearer ${API_KEY}`,
-        },
-      });
+      // Enforce per-session rate limit and use API client for timeout/retries
+      const sessionId = request.params.arguments && (request.params.arguments as any).session_id;
+      enforceRateLimit(sessionId);
+      const apiClient = getApiClient();
+      try {
+        const apiResponse = await apiClient.get(REPLIT_API_URL_RENTES, { correlationId: sessionId });
+        const data = apiResponse.data;
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`API error: ${response.status} ${response.statusText} - ${errorText}`);
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(data, null, 2),
+            },
+          ],
+        };
+      } catch (err) {
+        throw err;
       }
-
-      const data = await response.json();
-
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(data, null, 2),
-          },
-        ],
-      };
     } catch (error) {
+      const sessionId = request.params.arguments && (request.params.arguments as any).session_id;
+      if (error instanceof ValidationError) {
+        return {
+          content: [{ type: 'text', text: JSON.stringify(error.toStructured(sessionId), null, 2) }],
+          isError: true,
+        };
+      }
+      if (error instanceof APIError) {
+        return {
+          content: [{ type: 'text', text: JSON.stringify(error.toStructured(sessionId), null, 2) }],
+          isError: true,
+        };
+      }
       return {
-        content: [
-          {
-            type: "text",
-            text: `❌ Error bij het ophalen van actuele rentes: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
+        content: [{ type: 'text', text: JSON.stringify({ code: ErrorCode.UNKNOWN_ERROR, message: error instanceof Error ? error.message : String(error), correlation_id: sessionId }, null, 2) }],
         isError: true,
       };
     }
@@ -1508,38 +1543,41 @@ try {
         apiPayload.session_id = args.session_id;
       }
 
-      const response = await fetch(REPLIT_API_URL_OPZET, {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(apiPayload),
-      });
+      // Rate limit enforcement
+      enforceRateLimit(args.session_id);
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`API error: ${response.status} ${response.statusText} - ${errorText}`);
+      const apiClient = getApiClient();
+      try {
+        const apiResponse = await apiClient.post(REPLIT_API_URL_OPZET, apiPayload, { correlationId: args.session_id });
+        const data = apiResponse.data;
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: formatResponse(data, "opzet_hypotheek_starter"),
+            },
+          ],
+        };
+      } catch (err) {
+        throw err;
       }
-
-      const data = await response.json();
-
-      return {
-        content: [
-          {
-            type: "text",
-            text: formatResponse(data, "opzet_hypotheek_starter"),
-          },
-        ],
-      };
     } catch (error) {
+      const sessionId = request.params.arguments && (request.params.arguments as any).session_id;
+      if (error instanceof ValidationError) {
+        return {
+          content: [{ type: 'text', text: JSON.stringify(error.toStructured(sessionId), null, 2) }],
+          isError: true,
+        };
+      }
+      if (error instanceof APIError) {
+        return {
+          content: [{ type: 'text', text: JSON.stringify(error.toStructured(sessionId), null, 2) }],
+          isError: true,
+        };
+      }
       return {
-        content: [
-          {
-            type: "text",
-            text: `❌ Error bij het berekenen van opzet hypotheek voor starter: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
+        content: [{ type: 'text', text: JSON.stringify({ code: ErrorCode.UNKNOWN_ERROR, message: error instanceof Error ? error.message : String(error), correlation_id: sessionId }, null, 2) }],
         isError: true,
       };
     }
@@ -1619,38 +1657,41 @@ try {
         apiPayload.session_id = args.session_id;
       }
 
-      const response = await fetch(REPLIT_API_URL_OPZET, {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(apiPayload),
-      });
+      // Rate limit enforcement
+      enforceRateLimit(args.session_id);
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`API error: ${response.status} ${response.statusText} - ${errorText}`);
+      const apiClient = getApiClient();
+      try {
+        const apiResponse = await apiClient.post(REPLIT_API_URL_OPZET, apiPayload, { correlationId: args.session_id });
+        const data = apiResponse.data;
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: formatResponse(data, "opzet_hypotheek_doorstromer"),
+            },
+          ],
+        };
+      } catch (err) {
+        throw err;
       }
-
-      const data = await response.json();
-
-      return {
-        content: [
-          {
-            type: "text",
-            text: formatResponse(data, "opzet_hypotheek_doorstromer"),
-          },
-        ],
-      };
     } catch (error) {
+      const sessionId = request.params.arguments && (request.params.arguments as any).session_id;
+      if (error instanceof ValidationError) {
+        return {
+          content: [{ type: 'text', text: JSON.stringify(error.toStructured(sessionId), null, 2) }],
+          isError: true,
+        };
+      }
+      if (error instanceof APIError) {
+        return {
+          content: [{ type: 'text', text: JSON.stringify(error.toStructured(sessionId), null, 2) }],
+          isError: true,
+        };
+      }
       return {
-        content: [
-          {
-            type: "text",
-            text: `❌ Error bij het berekenen van opzet hypotheek voor doorstromer: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
+        content: [{ type: 'text', text: JSON.stringify({ code: ErrorCode.UNKNOWN_ERROR, message: error instanceof Error ? error.message : String(error), correlation_id: sessionId }, null, 2) }],
         isError: true,
       };
     }
@@ -1750,38 +1791,41 @@ try {
         }
       }
 
-      const response = await fetch(REPLIT_API_URL_OPZET, {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(apiPayload),
-      });
+      // Rate limit enforcement
+      enforceRateLimit(args.session_id);
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`API error: ${response.status} ${response.statusText} - ${errorText}`);
+      const apiClient = getApiClient();
+      try {
+        const apiResponse = await apiClient.post(REPLIT_API_URL_OPZET, apiPayload, { correlationId: args.session_id });
+        const data = apiResponse.data;
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: formatResponse(data, "opzet_hypotheek_uitgebreid"),
+            },
+          ],
+        };
+      } catch (err) {
+        throw err;
       }
-
-      const data = await response.json();
-
-      return {
-        content: [
-          {
-            type: "text",
-            text: formatResponse(data, "opzet_hypotheek_uitgebreid"),
-          },
-        ],
-      };
     } catch (error) {
+      const sessionId = request.params.arguments && (request.params.arguments as any).session_id;
+      if (error instanceof ValidationError) {
+        return {
+          content: [{ type: 'text', text: JSON.stringify(error.toStructured(sessionId), null, 2) }],
+          isError: true,
+        };
+      }
+      if (error instanceof APIError) {
+        return {
+          content: [{ type: 'text', text: JSON.stringify(error.toStructured(sessionId), null, 2) }],
+          isError: true,
+        };
+      }
       return {
-        content: [
-          {
-            type: "text",
-            text: `❌ Error bij uitgebreide opzet hypotheek berekening: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
+        content: [{ type: 'text', text: JSON.stringify({ code: ErrorCode.UNKNOWN_ERROR, message: error instanceof Error ? error.message : String(error), correlation_id: sessionId }, null, 2) }],
         isError: true,
       };
     }

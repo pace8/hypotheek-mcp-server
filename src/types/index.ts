@@ -263,7 +263,6 @@ export function normalizeHypotheekvorm(value: string): Hypotheekvorm {
   
   const mapping: Record<string, Hypotheekvorm> = {
     'annuiteit': Hypotheekvorm.ANNUITEIT,
-    'annuïteit': Hypotheekvorm.ANNUITEIT,
     'lineair': Hypotheekvorm.LINEAIR,
     'aflossingsvrij': Hypotheekvorm.AFLOSSINGSVRIJ,
     'aflossings vrij': Hypotheekvorm.AFLOSSINGSVRIJ,

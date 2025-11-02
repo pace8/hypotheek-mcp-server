@@ -363,3 +363,43 @@ describe('DoorstromerArguments Validation', () => {
     });
   });
 });
+
+// -----------------------------------------------------------------------------
+// Extra tests for STAP 3 (strictere enum normalisatie) and blocking behaviour
+// -----------------------------------------------------------------------------
+import { normalizeHypotheekvorm, normalizeEnergielabel } from '../../src/types/index';
+
+describe('Enum normalization (stricter) and blocking behaviour', () => {
+  describe('normalizeHypotheekvorm', () => {
+    it("should accept exact spelling 'annuiteit' (case-insensitive via lowercasing)", () => {
+      expect(normalizeHypotheekvorm('annuiteit')).toBeDefined();
+      expect(normalizeHypotheekvorm('Annuiteit')).toBeDefined();
+    });
+
+    it("should reject alternative spelling 'annuïteit' (accent not allowed)", () => {
+      expect(() => normalizeHypotheekvorm('annuïteit')).toThrow();
+    });
+  });
+
+  describe('normalizeEnergielabel', () => {
+    it("should accept exact 'A++++' but reject lowercase 'a++++'", () => {
+      expect(normalizeEnergielabel('A++++')).toBeDefined();
+      expect(() => normalizeEnergielabel('a++++')).toThrow();
+    });
+  });
+
+  describe('Validation blocking', () => {
+    it('validateBaseArguments should throw ValidationError (blocking) on invalid input', () => {
+      const bad = {
+        inkomen_aanvrager: 'not-a-number',
+        geboortedatum_aanvrager: '1990-05-15',
+        heeft_partner: false
+      } as any;
+
+      expect(() => {
+        // @ts-ignore - intentional wrong type
+        validateBaseArguments(bad);
+      }).toThrow();
+    });
+  });
+});
