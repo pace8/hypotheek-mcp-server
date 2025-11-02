@@ -1,6 +1,6 @@
 {
   "name": "hypotheek-berekening-server",
-  "version": "4.0.0",
+  "version": "4.1.0",
   "description": "MCP server voor hypotheekberekeningen met strict type safety en validatie",
   "main": "build/index.js",
   "type": "module",
