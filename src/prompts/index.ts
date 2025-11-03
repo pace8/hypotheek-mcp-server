@@ -36,9 +36,15 @@ const recoveryPromptArgsSchema = z.object({
   aanvullende_context: z.string().max(600).optional(),
 });
 
+const outputFormattingPromptArgsSchema = z.object({
+  tool_type: z.enum(['opzet', 'maximaal']),
+  user_question: z.string().max(200).optional(),
+});
+
 type IntakePromptArgs = z.infer<typeof intakePromptArgsSchema>;
 type ReviewPromptArgs = z.infer<typeof reviewPromptArgsSchema>;
 type RecoveryPromptArgs = z.infer<typeof recoveryPromptArgsSchema>;
+type OutputFormattingPromptArgs = z.infer<typeof outputFormattingPromptArgsSchema>;
 
 const intakePromptDefinition: PromptDefinition<IntakePromptArgs> = {
     metadata: {
@@ -167,6 +173,13 @@ Werkwijze:
 2. Benoem afwijkingen ten opzichte van verwachtingen of eerdere scenario’s.
 3. Geef advies voor vervolgstappen (bijv. verduidelijking, nieuwe toolcall, klantactie).
 
+**BELANGRIJK voor Opzet Hypotheek output:**
+- De tool geeft al een volledig gestructureerd overzicht met balans checks
+- Toon deze output VOLLEDIG aan de gebruiker
+- Voeg alleen een korte samenvatting toe aan het BEGIN indien gewenst
+- Benadruk de praktische toelichtingen uit de output
+- Gebruik de balans check om te verifiëren dat alles klopt
+
 ${maandlastRule}
 ${focusLines}
 ${rerunMotivation}`;
@@ -181,6 +194,59 @@ ${rerunMotivation}`;
         },
         createResourceLinkMessage('hypotheek://v4/guide/playbook'),
         createResourceLinkMessage('hypotheek://v4/ops/error-recovery'),
+      ];
+    },
+  };
+
+const outputFormattingPromptDefinition: PromptDefinition<OutputFormattingPromptArgs> = {
+    metadata: {
+      name: 'output-formatting',
+      title: 'Output Formatting Guidance',
+      description: 'Hulp bij het correct presenteren van tool output aan eindgebruikers.',
+      arguments: [
+        {
+          name: 'tool_type',
+          description: 'Type berekening: opzet of maximaal',
+          required: true,
+        },
+        {
+          name: 'user_question',
+          description: 'Optioneel: de originele vraag van de gebruiker',
+        },
+      ],
+    },
+    description: 'Geeft richtlijnen voor het presenteren van tool output.',
+    argsSchema: outputFormattingPromptArgsSchema,
+    build: (args: OutputFormattingPromptArgs) => {
+      const tool_type = args.tool_type;
+      const user_question = args.user_question;
+      
+      const text = `Je presenteert de output van een ${tool_type} hypotheek berekening.
+
+**Cruciale regels:**
+1. ✅ Toon de VOLLEDIGE tool output - deze is al perfect geformatteerd
+2. ✅ Voeg alleen een korte intro toe als context (1-2 zinnen max)
+3. ✅ Verwijs naar specifieke secties in de output bij vervolgvragen
+4. ❌ Herschrijf de output NIET in je eigen woorden
+5. ❌ Laat GEEN onderdelen weg (zoals maandlasten breakdown)
+
+**Template:**
+[Korte intro gebaseerd op vraag van gebruiker]
+
+[VOLLEDIGE TOOL OUTPUT HIER]
+
+[Optioneel: één concrete vervolgvraag of actie]
+
+${user_question ? `**Context:** De gebruiker vroeg: \"${user_question}\"` : ''}`;
+
+      return [
+        {
+          role: 'assistant',
+          content: {
+            type: 'text',
+            text,
+          },
+        },
       ];
     },
   };
@@ -251,6 +317,7 @@ ${actionText}${contextText}`;
 const promptDefinitions: PromptDefinition<any>[] = [
   intakePromptDefinition,
   reviewPromptDefinition,
+  outputFormattingPromptDefinition,
   recoveryPromptDefinition,
 ];
 

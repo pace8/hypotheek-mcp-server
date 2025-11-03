@@ -411,24 +411,41 @@ Financiering:
 
 **Agent response:**
 
-> "✅ **Ja, deze woning is haalbaar!**
-> 
-> 💰 **Benodigd:**
-> - Woningprijs: €315.000
-> - Kosten koper: €15.750 (5%)
-> - **Totaal: €330.750**
-> 
-> 💳 **Financiering:**
-> - Hypotheek: €315.750
-> - Uw spaargeld: €15.000
-> 
-> 📊 **Maandlasten:**
-> - Bruto: ongeveer €1.450
-> - Netto (na belastingvoordeel): ~€1.150
-> 
-> ⚡ **Energielabel B:** Dit is een goed label. Met verduurzaming naar A++ zou u €8.000 extra kunnen lenen.
-> 
-> **Let op:** U financiert 101% (boven de woningwaarde). Dit betekent geen NHG. Alternatief: Breng spaargeld in om onder 100% te blijven."
+🏠 **OPZET HYPOTHEEK - STARTER**
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 **TOTAAL BENODIGD BEDRAG**
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🏡 Koopsom woning: €315.000
+💼 Kosten koper: €15.750
+─────────────────────────────────────────────
+💰 **TOTAAL BENODIGD: €330.750**
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+💵 **FINANCIERING**
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🏦 Hypotheek: €315.750
+💎 Eigen geld: €15.000
+─────────────────────────────────────────────
+💵 **TOTAAL FINANCIERING: €330.750**
+
+✅ **Balans: Financiering dekt benodigd bedrag** ✓
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 **MAANDLASTEN**
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+💰 **Bruto maandlast: €1.450/maand**
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+💡 **PRAKTISCHE TOELICHTING**
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+⚠️ U financiert 101% (boven de woningwaarde). Dit betekent geen NHG. 
+   Overweeg meer eigen geld in te brengen.
+💡 Tip: Breng €20.000 eigen geld in om onder 100% te blijven en NHG te krijgen.
 
 ---
 
@@ -523,28 +540,80 @@ Financiering:
 
 **Agent response:**
 
-> "✅ **Ja, deze verhuizing is mogelijk!**
-> 
-> 🏠 **Huidige situatie:**
-> - Woningwaarde: €340.000
-> - Restschuld: €160.000
-> - **Overwaarde: €180.000**
-> 
-> 💰 **Nieuwe woning:**
-> - Koopprijs: €425.000
-> - Kosten koper: €21.250
-> - **Totaal: €446.250**
-> 
-> 💳 **Financiering:**
-> - Nieuwe hypotheek: €266.250
-> - Uw overwaarde: €180.000
-> 
-> 📊 **Maandlasten:**
-> - Oud: €780
-> - Nieuw: €1.235
-> - **Verschil: +€455**
-> 
-> 🎯 **Conclusie:** Met uw overwaarde van €180.000 is deze stap goed haalbaar. U benut niet eens uw volledige leencapaciteit."
+🏠 **OPZET HYPOTHEEK - DOORSTROMER**
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 **TOTAAL BENODIGD BEDRAG**
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🏡 Koopsom woning: €425.000
+💼 Kosten koper: €21.250
+─────────────────────────────────────────────
+💰 **TOTAAL BENODIGD: €446.250**
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+💵 **FINANCIERING**
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🔄 Bestaande hypotheek (over te sluiten): €160.000
+🆕 Nieuwe hypotheek (extra): €266.250
+📈 Overwaarde huidige woning: €180.000
+─────────────────────────────────────────────
+💵 **TOTAAL FINANCIERING: €446.250**
+
+✅ **Balans: Financiering dekt benodigd bedrag** ✓
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 **MAANDLASTEN**
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🔄 Bestaande hypotheek: €780/maand
+🆕 Nieuwe hypotheek (extra): €1.235/maand
+─────────────────────────────────────────────
+💰 **TOTAAL MAANDLAST: €2.015/maand**
+
+📈 **Stijging maandlast: +€455/maand**
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+💡 **PRAKTISCHE TOELICHTING**
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✓ U heeft een substantiële overwaarde van €180.000. Dit geeft u ruimte voor de nieuwe woning of als buffer.
+⚠️ Nieuwe maandlast is substantieel (€2.015). Zorg dat dit binnen uw budget past.
+
+---
+
+### Voorbeeld 8B: Output Formatting Best Practices
+
+**Belangrijk:** De verbeterde output in v4.1+ geeft automatisch een gestructureerd overzicht. Zorg dat je dit aan de gebruiker toont en niet zelf gaat samenvatten.
+
+**Wat de MCP server nu automatisch doet:**
+- ✅ Totalen berekenen (benodigd bedrag + financiering)
+- ✅ Balans check (klopt de som?)
+- ✅ Maandlasten breakdown (bestaand vs nieuw)
+- ✅ Context-aware tips en waarschuwingen
+
+**DO's:**
+✅ Toon de volledige output van de tool  
+✅ Voeg eventueel een korte samenvatting toe aan het BEGIN  
+✅ Benadruk belangrijke cijfers (bijv. totale maandlast)  
+✅ Vraag door op basis van de praktische tips in de output
+
+**DON'Ts:**
+❌ Probeer NIET de output zelf te herschrijven  
+❌ Laat GEEN delen weg (bijv. de maandlasten breakdown)  
+❌ Voeg GEEN eigen berekeningen toe die afwijken van de tool  
+❌ Negeer de praktische toelichtingen niet
+
+**Voorbeeld goede response:**
+
+> Op basis van uw wensen heb ik een complete opzet gemaakt. Hier is het overzicht:
+>
+> [VOLLEDIGE TOOL OUTPUT]
+>
+> **Mijn aanbeveling:** De berekening laat zien dat u een overwaarde heeft van €240.000. 
+> Ik raad aan om hiervan €40.000 te reserveren als buffer, zodat u niet alle overwaarde 
+> direct in de nieuwe woning stopt. Wat vindt u daarvan?
 
 ---
 

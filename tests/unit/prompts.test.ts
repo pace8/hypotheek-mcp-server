@@ -7,10 +7,13 @@ describe('MCP prompts', () => {
     const prompts = listPrompts();
     const names = prompts.map((prompt) => prompt.name);
 
-    expect(names).toEqual(['intake-kickoff', 'offer-review', 'recovery-plan']);
+    expect(names).toEqual(['intake-kickoff', 'offer-review', 'output-formatting', 'recovery-plan']);
     const intake = prompts.find((prompt) => prompt.name === 'intake-kickoff');
     expect(intake?.arguments).toBeDefined();
     expect(intake?.arguments?.length).toBeGreaterThanOrEqual(2);
+
+    const outputFormatting = prompts.find((prompt) => prompt.name === 'output-formatting');
+    expect(outputFormatting?.arguments?.[0].required).toBe(true);
   });
 
   it('builds intake prompt with defaults and resource links', () => {
