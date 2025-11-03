@@ -19,6 +19,7 @@ Een Model Context Protocol (MCP) server voor Nederlandse hypotheekberekeningen m
 - 💰 **Actuele rentes** - Top 5 laagste tarieven (NHG + non-NHG)
 - 📊 **Opzet hypotheek** - Complete financieringsanalyse
 - ⚡ **7 gespecialiseerde tools** - Van simpel tot uitgebreid
+- 📚 **MCP Resources & Prompts** - Quick reference, error guides en intake/recovery templates voor consistente antwoorden
 
 ### Enterprise Features (v4.0) ⭐
 - 🛡️ **Circuit Breaker** - Voorkomt cascade failures
@@ -250,6 +251,7 @@ npm run test:integration   # Integration tests
   - Complete conversation flows
   - Error handling scenarios
   - Do's and Don'ts
+- 📂 **[Resources & Prompts Guide](./docs/RESOURCES_GUIDE.md)** - Overzicht met alle MCP resources, voorbeeldgebruik en promptargumenten
 
 ### For Developers
 

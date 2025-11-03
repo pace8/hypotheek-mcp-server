@@ -4,7 +4,11 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
   CallToolRequestSchema,
+  GetPromptRequestSchema,
+  ListPromptsRequestSchema,
+  ListResourcesRequestSchema,
   ListToolsRequestSchema,
+  ReadResourceRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 // ============================================================================
 // FASE 1: Nieuwe imports voor type safety, validatie, logging en config
@@ -25,6 +29,8 @@ import {
   normalizeOpzetDoorstromerArgs,
 } from './adapters/field-normalizer.js';
 import { recordToolCall, recordValidationError } from './metrics/exporter.js';
+import { listResources, readResource } from './resources/index.js';
+import { getPrompt, listPrompts } from './prompts/index.js';
 
 
 // ============================================================================
@@ -147,6 +153,8 @@ const server = new Server(
   {
     capabilities: {
       tools: {},
+      resources: {},
+      prompts: {},
     },
   }
 );
@@ -832,6 +840,27 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         },
       },
     ],
+  };
+});
+
+server.setRequestHandler(ListResourcesRequestSchema, async () => ({
+  resources: listResources(),
+}));
+
+server.setRequestHandler(ReadResourceRequestSchema, async (request) => ({
+  contents: [readResource(request.params.uri)],
+}));
+
+server.setRequestHandler(ListPromptsRequestSchema, async () => ({
+  prompts: listPrompts(),
+}));
+
+server.setRequestHandler(GetPromptRequestSchema, async (request) => {
+  const args = request.params.arguments ? { ...request.params.arguments } : undefined;
+  const prompt = getPrompt(request.params.name, args as Record<string, unknown> | undefined);
+  return {
+    description: prompt.description,
+    messages: prompt.messages,
   };
 });
 
