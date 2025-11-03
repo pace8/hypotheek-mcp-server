@@ -6,6 +6,7 @@
 
 import winston from 'winston';
 import { LogLevel } from '../types/index.js';
+import { applyRedaction, RedactionLevel } from './pii-scrubber.js';
 
 // ==============================================================================
 // LOGGER CONFIGURATION
@@ -78,27 +79,36 @@ export class CorrelatedLogger {
   }
   
   debug(message: string, meta?: Record<string, unknown>): void {
-    baseLogger.debug(message, this.getMeta(meta));
+    const sanitizedMeta = meta ? applyRedaction(meta) : undefined;
+    baseLogger.debug(message, this.getMeta(sanitizedMeta));
   }
   
   info(message: string, meta?: Record<string, unknown>): void {
-    baseLogger.info(message, this.getMeta(meta));
+    const sanitizedMeta = meta ? applyRedaction(meta) : undefined;
+    baseLogger.info(message, this.getMeta(sanitizedMeta));
   }
   
   warn(message: string, meta?: Record<string, unknown>): void {
-    baseLogger.warn(message, this.getMeta(meta));
+    const sanitizedMeta = meta ? applyRedaction(meta) : undefined;
+    baseLogger.warn(message, this.getMeta(sanitizedMeta));
   }
   
   error(message: string, error?: Error | unknown, meta?: Record<string, unknown>): void {
+    const sanitizedMeta = meta ? applyRedaction(meta) : undefined;
+
     const errorMeta = error instanceof Error ? {
       error: {
         name: error.name,
-        message: error.message,
+        message: nodeEnv === 'development' ? error.message : '[REDACTED]',
         stack: nodeEnv === 'development' ? error.stack : undefined
       }
     } : { error };
-    
-    baseLogger.error(message, this.getMeta({ ...errorMeta, ...meta }));
+
+    // Combine error metadata with sanitized meta, then apply redaction once more to be safe
+    const combined = { ...errorMeta, ...(sanitizedMeta || {}) } as Record<string, unknown>;
+    const finalMeta = applyRedaction(combined);
+
+    baseLogger.error(message, this.getMeta(finalMeta));
   }
   
   /**

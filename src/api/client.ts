@@ -11,6 +11,7 @@
 import { getConfig } from '../config/index.js';
 import { createLogger } from '../utils/logger.js';
 import { APIError, ErrorCode } from '../types/index.js';
+import { withCircuitBreaker } from '../middleware/circuit-breaker.js';
 
 // ==============================================================================
 // TYPES
@@ -256,52 +257,53 @@ export class ApiClient {
     timeout: number,
     correlationId?: string
   ): Promise<ApiResponse<T>> {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeout);
-    
-    try {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.config.replitApiKey}`,
-          'Content-Type': 'application/json',
-          ...(correlationId && { 'X-Correlation-ID': correlationId })
-        },
-        body: JSON.stringify(body),
-        signal: controller.signal
-      });
-      
-      clearTimeout(timeoutId);
-      
-      // Handle non-OK responses
-      if (!response.ok) {
-        const errorText = await response.text();
-        const error = new Error(`HTTP ${response.status}: ${errorText}`);
-        (error as any).statusCode = response.status;
+    // Wrap the HTTP call in a circuit breaker to protect downstream API
+    return withCircuitBreaker(async () => {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${this.config.replitApiKey}`,
+            'Content-Type': 'application/json',
+            ...(correlationId && { 'X-Correlation-ID': correlationId })
+          },
+          body: JSON.stringify(body),
+          signal: controller.signal
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          const error = new Error(`HTTP ${response.status}: ${errorText}`);
+          (error as any).statusCode = response.status;
+          throw error;
+        }
+
+        const data = await response.json();
+
+        return {
+          data: data as T,
+          statusCode: response.status,
+          headers: Object.fromEntries(response.headers.entries()),
+          duration: 0
+        };
+
+      } catch (error) {
+        clearTimeout(timeoutId);
+
+        if ((error as Error).name === 'AbortError') {
+          const timeoutError = new Error(`Request timeout after ${timeout}ms`);
+          (timeoutError as any).statusCode = 408;
+          throw timeoutError;
+        }
+
         throw error;
       }
-      
-      const data = await response.json();
-      
-      return {
-        data: data as T,
-        statusCode: response.status,
-        headers: Object.fromEntries(response.headers.entries()),
-        duration: 0 // Wordt overschreven door caller
-      };
-      
-    } catch (error) {
-      clearTimeout(timeoutId);
-      
-      // Check for timeout
-      if ((error as Error).name === 'AbortError') {
-        const timeoutError = new Error(`Request timeout after ${timeout}ms`);
-        (timeoutError as any).statusCode = 408;
-        throw timeoutError;
-      }
-      
-      throw error;
-    }
+    });
   }
   
   /**

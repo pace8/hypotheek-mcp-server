@@ -24,6 +24,7 @@ import {
   normalizeDoorstromerArgs,
   normalizeOpzetDoorstromerArgs,
 } from './adapters/field-normalizer.js';
+import { recordToolCall, recordValidationError } from './metrics/exporter.js';
 
 
 // ============================================================================
@@ -1066,6 +1067,11 @@ function formatResponse(data: any, toolName: string): string {
 
 // Handler voor tool calls
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  const startTime = Date.now();
+  const toolName = request.params && (request.params.name || 'unknown_tool');
+  let success = false;
+  try {
+    success = true;
   // Tool 1: Starters
   if (request.params.name === "bereken_hypotheek_starter") {
     try {
@@ -1870,6 +1876,16 @@ try {
   }
 
   throw new Error(`Onbekende tool: ${request.params.name}`);
+  } catch (err) {
+    success = false;
+    if (err instanceof ValidationError) {
+      try { recordValidationError((err as any).code || 'validation_error'); } catch (e) { /* ignore metrics failure */ }
+    }
+    throw err;
+  } finally {
+    const duration = Date.now() - startTime;
+    try { recordToolCall(toolName, duration, success); } catch (e) { /* ignore metrics failure */ }
+  }
 });
 
 // Start de server met stdio transport
