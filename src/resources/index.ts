@@ -335,6 +335,17 @@ const resourceDefinitions: ResourceDefinition[] = [
   },
   {
     metadata: {
+      name: 'guide-opzet-intake',
+      title: 'Opzet Hypotheek Intake Guide',
+      description: 'Checklist voor intakevelden, defaults en doorstromer-specifieke gegevens.',
+      uri: 'hypotheek://v4/guide/opzet-intake',
+      mimeType: MARKDOWN_MIME
+    },
+    version: '1.0.0',
+    buildText: buildOpzetIntakeGuide
+  },
+  {
+    metadata: {
       name: 'guide-output-formatting',
       title: 'Output Formatting Guide',
       description: 'Best practices voor het presenteren van hypotheek berekeningen aan eindgebruikers.',
@@ -397,6 +408,48 @@ function readFileRelative(relativePath: string): string {
 
 function hashContent(content: string): string {
   return createHash('sha256').update(content).digest('hex');
+}
+
+function buildOpzetIntakeGuide(): string {
+  return `# Opzet Hypotheek Intake Guide
+
+## Basisvelden (altijd vragen)
+- \`inkomen_aanvrager\`: bruto jaarinkomen hoofdaanvrager (EUR)
+- \`geboortedatum_aanvrager\`: YYYY-MM-DD (reken leeftijd desnoods om)
+- \`heeft_partner\`: true/false
+- \`inkomen_partner\` & \`geboortedatum_partner\`: alleen invullen bij een meedoen­de partner
+- \`verplichtingen_pm\`: maandelijkse verplichtingen (default 0)
+
+## Optioneel maar vaak handig
+- \`eigen_vermogen\`: beschikbaar spaargeld/gift (default 0)
+- \`session_id\`: doorgeven vanuit n8n voor logging en rate limiting
+
+## Nieuwe woning
+- \`nieuwe_woning.waarde_woning\` (verplicht)
+- \`bedrag_verbouwen\`, \`bedrag_verduurzamen\`: defaults 0
+- \`kosten_percentage\`: default 0.05 (5%)
+- \`energielabel\`: exacte string uit de lijst (optioneel)
+
+## Doorstromer-specifiek
+- \`waarde_huidige_woning\`: marktwaarde huidige woning
+- \`bestaande_hypotheek.leningdelen[]\` met:
+  - \`huidige_schuld\`, \`huidige_rente\` (decimaal), \`resterende_looptijd_in_maanden\`, \`rentevasteperiode_maanden\`, \`hypotheekvorm\`
+
+## Maatwerk (tool \`opzet_hypotheek_uitgebreid\`)
+- \`is_doorstromer\`: true/false voor routing
+- \`nieuwe_lening.looptijd_jaren\`, \`rentevast_periode_jaren\`, \`nhg\` (defaults 30 / 10 / false)
+- \`nieuwe_lening.renteklassen[]\`: optioneel voor custom rentetabellen
+- \`nieuwe_hypotheek\`: vrije container voor aanvullende velden of aanbiederspecifieke info
+
+## Aanpak in het gesprek
+1. Verzamel basisintake + scenario (starter vs doorstromer).
+2. Raadpleeg deze guide om ontbrekende velden in te vullen of defaults te bevestigen.
+3. Gebruik de juiste tool:
+   - \`opzet_hypotheek_starter\` voor starters
+   - \`opzet_hypotheek_doorstromer\` voor klanten met verkoop van huidige woning
+   - \`opzet_hypotheek_uitgebreid\` voor maatwerkparameters
+4. Bevestig naar de klant welke aannames en defaults zijn gebruikt.
+`;
 }
 
 function buildOutputFormattingGuide(): string {
@@ -560,6 +613,10 @@ ${mistakes}
 ## Error code quick reference
 
 ${errorLines}${outputGuidance}
+
+## Verdere resources
+- Intake details & defaults: hypotheek://v4/guide/opzet-intake
+- Output formatting leidraad: hypotheek://v4/guide/output-formatting
 `;
 }
 

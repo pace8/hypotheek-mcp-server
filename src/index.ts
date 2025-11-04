@@ -145,10 +145,113 @@ interface OpzetUitgebreidArguments extends OpzetBaseArguments {
   nieuwe_lening?: OpzetNieuweLening;
 }
 
+const OPZET_GUIDE_URI = 'hypotheek://v4/guide/opzet-intake';
+
+const baseIntakeProperties = {
+  inkomen_aanvrager: {
+    type: "number",
+    description: "Bruto jaarinkomen hoofdaanvrager in euro's.",
+  },
+  geboortedatum_aanvrager: {
+    type: "string",
+    description: "Geboortedatum hoofdaanvrager (YYYY-MM-DD).",
+  },
+  heeft_partner: {
+    type: "boolean",
+    description: "Geeft aan of een partner mee leent.",
+  },
+  inkomen_partner: {
+    type: "number",
+    description: "Optioneel partnerinkomen in euro's.",
+  },
+  geboortedatum_partner: {
+    type: "string",
+    description: "Optionele geboortedatum partner (YYYY-MM-DD).",
+  },
+  verplichtingen_pm: {
+    type: "number",
+    description: "Optionele maandelijkse verplichtingen in euro's.",
+    default: 0,
+  },
+};
+
+const baseIntakeRequired = ["inkomen_aanvrager", "geboortedatum_aanvrager", "heeft_partner"];
+
+const nieuweWoningSchema = {
+  type: "object",
+  description: `Kerngegevens nieuwe woning (detailuitleg: ${OPZET_GUIDE_URI}).`,
+  properties: {
+    waarde_woning: {
+      type: "number",
+      description: "Koopsom nieuwe woning in euro's.",
+    },
+    bedrag_verbouwen: {
+      type: "number",
+      description: "Optionele verbouwingskosten in euro's.",
+      default: 0,
+    },
+    bedrag_verduurzamen: {
+      type: "number",
+      description: "Optionele verduurzamingskosten in euro's.",
+      default: 0,
+    },
+    kosten_percentage: {
+      type: "number",
+      description: "Optioneel kostenpercentage koper als decimaal.",
+      default: 0.05,
+    },
+    energielabel: {
+      type: "string",
+      description: "Optioneel energielabel van de woning.",
+      enum: ["A++++ (met garantie)", "A++++", "A+++", "A++", "A+", "A", "B", "C", "D", "E", "F", "G"],
+    },
+  },
+  required: ["waarde_woning"],
+};
+
+const bestaandeHypotheekSchema = {
+  type: "object",
+  description: `Bestaande leningdelen voor doorstromer (detailuitleg: ${OPZET_GUIDE_URI}).`,
+  properties: {
+    leningdelen: {
+      type: "array",
+      description: "Minimaal één leningdeel met restschuld en rente.",
+      items: {
+        type: "object",
+        properties: {
+          huidige_schuld: {
+            type: "number",
+            description: "Restschuld in euro's.",
+          },
+          huidige_rente: {
+            type: "number",
+            description: "Rente als decimaal (bijv. 0.028).",
+          },
+          resterende_looptijd_in_maanden: {
+            type: "number",
+            description: "Resterende looptijd in maanden.",
+          },
+          rentevasteperiode_maanden: {
+            type: "number",
+            description: "Resterende rentevaste periode in maanden.",
+          },
+          hypotheekvorm: {
+            type: "string",
+            description: "Hypotheekvorm van het leningdeel.",
+            enum: ["annuiteit", "lineair", "aflossingsvrij"],
+          },
+        },
+        required: ["huidige_schuld", "huidige_rente", "resterende_looptijd_in_maanden", "rentevasteperiode_maanden", "hypotheekvorm"],
+      },
+    },
+  },
+  required: ["leningdelen"],
+};
+
 const server = new Server(
   {
     name: "hypotheek-berekening-server",
-    version: "4.0.0",
+    version: config.serverVersion,
   },
   {
     capabilities: {
@@ -173,133 +276,44 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       // Tool 1: Starters - Simpele berekening
       {
         name: "bereken_hypotheek_starter",
-        description: "Berekent de maximale hypotheek voor STARTERS (eerste woning). Voor mensen zonder bestaande hypotheek die hun eerste huis willen kopen. Geeft 2 resultaten: één op basis van NHG condities en één zonder NHG. Vraag alleen naar: inkomen, leeftijd, en eventuele maandelijkse verplichtingen. Gebruikt standaard hypotheekvoorwaarden.",
+        description: "Berekent de maximale hypotheek voor starters. Output: maximaal leenbedrag, maandlast en NHG-vergelijking.",
         inputSchema: {
           type: "object",
+          description: `Gebruik basisintakevelden; zie ${OPZET_GUIDE_URI} voor detaildefinities.`,
           properties: {
-            inkomen_aanvrager: {
-              type: "number",
-              description: "Bruto jaarinkomen van de hoofdaanvrager in euro's",
-            },
-            geboortedatum_aanvrager: {
-              type: "string",
-              description: "Geboortedatum aanvrager in formaat YYYY-MM-DD. TIP: Vraag de gebruiker naar zijn/haar leeftijd en reken dit om naar een geboortedatum waarbij de persoon morgen jarig wordt.",
-            },
-            heeft_partner: {
-              type: "boolean",
-              description: "Heeft de aanvrager een partner die mee aanvraagt?",
-            },
-            inkomen_partner: {
-              type: "number",
-              description: "OPTIONEEL - Bruto jaarinkomen van de partner in euro's. Alleen invullen indien heeft_partner: true",
-            },
-            geboortedatum_partner: {
-              type: "string",
-              description: "OPTIONEEL - Geboortedatum partner in formaat YYYY-MM-DD. Alleen invullen indien heeft_partner: true.",
-            },
-            verplichtingen_pm: {
-              type: "number",
-              description: "Maandelijkse verplichtingen in euro's (andere leningen, alimentatie, etc.). Gebruik 0 als er geen verplichtingen zijn.",
-              default: 0,
-            },
+            ...baseIntakeProperties,
             session_id: {
               type: "string",
-              description: "OPTIONEEL - Sessie ID voor het traceren van de conversatie. Haal deze waarde uit de n8n chat trigger: 'When chat message received' -> sessionId variabele.",
+              description: "Optioneel sessie-ID vanuit n8n (voor logging).",
             },
           },
-          required: [
-            "inkomen_aanvrager",
-            "geboortedatum_aanvrager",
-            "heeft_partner",
-            "verplichtingen_pm",
-          ],
+          required: baseIntakeRequired,
         },
       },
       
       // Tool 2: Doorstromers - Met bestaande hypotheek
       {
         name: "bereken_hypotheek_doorstromer",
-        description: "Berekent de maximale hypotheek voor DOORSTROMERS (mensen met bestaande koopwoning en hypotheek). Voor mensen die een nieuwe woning willen kopen en hun huidige woning verkopen. Vraag naar: inkomen, leeftijd, verplichtingen, huidige woningwaarde, en bestaande hypotheekgegevens. Er zijn twee invulmogelijkheden voor de bestaande hypotheek: SIMPEL (totale schuld, gemiddelde rente, looptijd in maanden) of GEDETAILLEERD (alle leningdelen apart). BELANGRIJK: Rentes moeten als decimaal (bijv. 0.02 voor 2%, 0.041 voor 4.1%). Looptijden altijd in MAANDEN.",
+        description: "Berekent de maximale hypotheek voor doorstromers. Output: nieuw leenbedrag, maandlast en overwaarde-indicatie.",
         inputSchema: {
           type: "object",
+          description: `Gebruik basisintakevelden plus huidige woninginformatie; zie ${OPZET_GUIDE_URI} voor detaildefinities.`,
           properties: {
-            inkomen_aanvrager: {
-              type: "number",
-              description: "Bruto jaarinkomen van de hoofdaanvrager in euro's",
-            },
-            geboortedatum_aanvrager: {
-              type: "string",
-              description: "Geboortedatum aanvrager in formaat YYYY-MM-DD",
-            },
-            heeft_partner: {
-              type: "boolean",
-              description: "Heeft de aanvrager een partner die mee aanvraagt?",
-            },
-            inkomen_partner: {
-              type: "number",
-              description: "OPTIONEEL - Bruto jaarinkomen van de partner in euro's. Alleen invullen indien heeft_partner: true",
-            },
-            geboortedatum_partner: {
-              type: "string",
-              description: "OPTIONEEL - Geboortedatum partner in formaat YYYY-MM-DD. Alleen invullen indien heeft_partner: true.",
-            },
-            verplichtingen_pm: {
-              type: "number",
-              description: "Maandelijkse verplichtingen in euro's. Gebruik 0 als er geen zijn.",
-              default: 0,
-            },
+            ...baseIntakeProperties,
             waarde_huidige_woning: {
               type: "number",
-              description: "Huidige marktwaarde van de woning die verkocht wordt, in euro's",
+              description: "Huidige marktwaarde van de bestaande woning.",
             },
             bestaande_hypotheek: {
-              type: "object",
-              description: "Gegevens van de bestaande hypotheek. Twee opties: SIMPEL (1 leningdeel met totalen) of GEDETAILLEERD (alle leningdelen apart). BELANGRIJK: Rentes als decimaal (0.02 = 2%), looptijden in MAANDEN.",
-              properties: {
-                leningdelen: {
-                  type: "array",
-                  description: "Bestaande leningdelen. Voor SIMPELE berekening: 1 item met totale restschuld, gemiddelde rente, resterende looptijd in MAANDEN, rentevasteperiode_maanden: 10, hypotheekvorm: 'annuiteit'. Voor GEDETAILLEERDE berekening: elk leningdeel apart.",
-                  items: {
-                    type: "object",
-                    properties: {
-                      huidige_schuld: {
-                        type: "number",
-                        description: "Restschuld van dit leningdeel in euro's",
-                      },
-                      huidige_rente: {
-                        type: "number",
-                        description: "Rente als decimaal (bijv. 0.02 voor 2%, 0.041 voor 4.1%)",
-                      },
-                      resterende_looptijd_in_maanden: {
-                        type: "number",
-                        description: "Resterende looptijd in MAANDEN (niet jaren!). Bijvoorbeeld: 20 jaar = 240 maanden, 30 jaar = 360 maanden.",
-                      },
-                      rentevasteperiode_maanden: {
-                        type: "number",
-                        description: "Resterende rentevaste periode in MAANDEN. Bij simpele berekening: gebruik 10 maanden.",
-                      },
-                      hypotheekvorm: {
-                        type: "string",
-                        description: "Type hypotheek: 'annuiteit', 'lineair', of 'aflossingsvrij'",
-                        enum: ["annuiteit", "lineair", "aflossingsvrij"],
-                      },
-                    },
-                    required: ["huidige_schuld", "huidige_rente", "resterende_looptijd_in_maanden", "rentevasteperiode_maanden", "hypotheekvorm"],
-                  },
-                },
-              },
-              required: ["leningdelen"],
+              ...bestaandeHypotheekSchema,
             },
             session_id: {
               type: "string",
-              description: "OPTIONEEL - Sessie ID voor het traceren van de conversatie. Haal deze waarde uit de n8n chat trigger: 'When chat message received' -> sessionId variabele.",
+              description: "Optioneel sessie-ID vanuit n8n (voor logging).",
             },
           },
           required: [
-            "inkomen_aanvrager",
-            "geboortedatum_aanvrager",
-            "heeft_partner",
-            "verplichtingen_pm",
+            ...baseIntakeRequired,
             "waarde_huidige_woning",
             "bestaande_hypotheek",
           ],
@@ -309,144 +323,51 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       // Tool 3: Uitgebreid - Alle parameters configureerbaar
       {
         name: "bereken_hypotheek_uitgebreid",
-        description: "ALLEEN voor berekeningen met aangepaste parameters (specifieke rente, energielabel, looptijd, hypotheekvorm). Voor normale berekeningen gebruik 'bereken_hypotheek_starter' of 'bereken_hypotheek_doorstromer'. \n\nLET OP: Vul de parameters in zoals hieronder beschreven (NIET als nested 'aanvragers' of 'nieuwe_lening' objecten - dat doet de code automatisch).",
+        description: "Gebruik dit voor maatwerk (rente, looptijd, energielabel). Output: maatwerk leenbedrag met maandlast en NHG-inschatting.",
         inputSchema: {
           type: "object",
+          description: `Alle velden zijn optioneel bovenop de basisintake; zie ${OPZET_GUIDE_URI} voor velduitleg en defaults.`,
           properties: {
-            // Basis gegevens (zelfde als andere tools)
-            inkomen_aanvrager: {
+            ...baseIntakeProperties,
+            eigen_vermogen: {
               type: "number",
-              description: "Bruto jaarinkomen van de hoofdaanvrager in euro's",
-            },
-            geboortedatum_aanvrager: {
-              type: "string",
-              description: "Geboortedatum aanvrager in formaat YYYY-MM-DD",
-            },
-            heeft_partner: {
-              type: "boolean",
-              description: "Heeft de aanvrager een partner die mee aanvraagt?",
-            },
-            inkomen_partner: {
-              type: "number",
-              description: "OPTIONEEL - Bruto jaarinkomen van de partner in euro's.",
-            },
-            geboortedatum_partner: {
-              type: "string",
-              description: "OPTIONEEL - Geboortedatum partner in formaat YYYY-MM-DD.",
-            },
-            verplichtingen_pm: {
-              type: "number",
-              description: "Maandelijkse verplichtingen in euro's.",
+              description: "Optioneel beschikbaar eigen geld in euro's.",
               default: 0,
             },
-            
-            // Bestaande situatie (voor doorstromers)
             is_doorstromer: {
               type: "boolean",
-              description: "Is dit een doorstromer met bestaande woning en hypotheek?",
+              description: "Geeft aan of de aanvrager een doorstromer is.",
             },
             waarde_huidige_woning: {
               type: "number",
-              description: "OPTIONEEL - Alleen voor doorstromers: huidige woningwaarde in euro's",
+              description: "Optionele huidige woningwaarde in euro's.",
             },
             bestaande_hypotheek: {
-              type: "object",
-              description: "OPTIONEEL - Alleen voor doorstromers: gegevens van de bestaande hypotheek.",
-              properties: {
-                leningdelen: {
-                  type: "array",
-                  items: {
-                    type: "object",
-                    properties: {
-                      huidige_schuld: {
-                        type: "number",
-                        description: "Restschuld in euro's",
-                      },
-                      huidige_rente: {
-                        type: "number",
-                        description: "Rente als decimaal (bijv. 0.041 voor 4.1%)",
-                      },
-                      resterende_looptijd_in_maanden: {
-                        type: "number",
-                        description: "Resterende looptijd in MAANDEN",
-                      },
-                      rentevasteperiode_maanden: {
-                        type: "number",
-                        description: "Resterende rentevaste periode in MAANDEN",
-                      },
-                      hypotheekvorm: {
-                        type: "string",
-                        description: "Type hypotheek",
-                        enum: ["annuiteit", "lineair", "aflossingsvrij"],
-                      },
-                    },
-                    required: ["huidige_schuld", "huidige_rente", "resterende_looptijd_in_maanden", "rentevasteperiode_maanden", "hypotheekvorm"],
-                  },
-                },
-              },
-              required: ["leningdelen"],
+              ...bestaandeHypotheekSchema,
             },
-            
-            // Nieuwe hypotheek parameters (optioneel)
+            nieuwe_woning: {
+              ...nieuweWoningSchema,
+            },
             nieuwe_hypotheek: {
               type: "object",
-              description: "Parameters voor de nieuwe hypotheek. VERPLICHT als je energielabel, rente, of andere specifieke parameters wilt instellen. Vul ALLE onderstaande velden in (gebruik standaardwaarden als de gebruiker ze niet specificeert).",
-              properties: {
-                looptijd_maanden: {
-                  type: "number",
-                  description: "Looptijd van de hypotheek in MAANDEN. Standaard: 360 (= 30 jaar). Voorbeelden: 20 jaar = 240, 25 jaar = 300, 30 jaar = 360",
-                  default: 360,
-                },
-                rentevaste_periode_maanden: {
-                  type: "number",
-                  description: "Rentevaste periode in MAANDEN. Standaard: 120 (= 10 jaar). Voorbeelden: 5 jaar = 60, 10 jaar = 120, 20 jaar = 240",
-                  default: 120,
-                },
-                rente: {
-                  type: "number",
-                  description: "Rentepercentage als DECIMAAL. Voorbeelden: 3.72% = 0.0372, 4.0% = 0.04, 4.1% = 0.041",
-                },
-                hypotheekvorm: {
-                  type: "string",
-                  description: "Type hypotheek. Standaard: 'annuiteit'. Opties: 'annuiteit' (meest voorkomend), 'lineair', 'aflossingsvrij'",
-                  enum: ["annuiteit", "lineair", "aflossingsvrij"],
-                  default: "annuiteit",
-                },
-                energielabel: {
-                  type: "string",
-                  description: "Energielabel van de woning. Let op: gebruik de EXACTE string inclusief haakjes! Voorbeelden: 'A++++ (met garantie)', 'A++++', 'A+++', 'C', 'G'",
-                  enum: ["A++++ (met garantie)", "A++++", "A+++", "A++", "A+", "A", "B", "C", "D", "E", "F", "G"],
-                },
-                nhg: {
-                  type: "boolean",
-                  description: "Nationale Hypotheek Garantie aanvragen? Standaard: false",
-                  default: false,
-                },
-                ltv: {
-                  type: "number",
-                  description: "Loan-to-Value als DECIMAAL GETAL (niet als percentage string!). 100% = 1.0, 90% = 0.9. Gebruik 1.0 voor 100%.",
-                  default: 1.0,
-                },
-              },
-              required: ["looptijd_maanden", "rentevaste_periode_maanden", "hypotheekvorm"],
+              description: `Optionele maatwerk leningparameters (looptijd, rentevast, rente). Detailuitleg: ${OPZET_GUIDE_URI}.`,
+            },
+            nieuwe_lening: {
+              type: "object",
+              description: `Optionele structuur voor looptijd/rentevast/NHG en renteklassen (detailuitleg: ${OPZET_GUIDE_URI}).`,
             },
             session_id: {
               type: "string",
-              description: "OPTIONEEL - Sessie ID voor het traceren van de conversatie. Haal deze waarde uit de n8n chat trigger: 'When chat message received' -> sessionId variabele.",
+              description: "Optioneel sessie-ID vanuit n8n (voor logging).",
             },
           },
-          required: [
-            "inkomen_aanvrager",
-            "geboortedatum_aanvrager",
-            "heeft_partner",
-          ],
+          required: baseIntakeRequired,
         },
       },
-      
       // Tool 4: Actuele rentes ophalen
       {
         name: "haal_actuele_rentes_op",
-        description: "Haalt de actuele hypotheekrente tarieven op voor verschillende rentevaste periodes. Deze tool geeft inzicht in de huidige marktrentes die gebruikt kunnen worden bij hypotheekberekeningen. Vraag hiernaar als de gebruiker wil weten wat de huidige rentes zijn.",
+        description: "Haalt actuele hypotheekrentes op per rentevaste periode. Output: overzicht met NHG- en niet-NHG-tarieven.",
         inputSchema: {
           type: "object",
           properties: {},
@@ -457,229 +378,68 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       // Tool 5: Opzet hypotheek - Starters
       {
         name: "opzet_hypotheek_starter",
-        description: `Berekent de opzet van een hypotheek voor STARTERS (eerste koopwoning). 
-  
-  **Output bevat:**
-  - Complete breakdown van benodigd bedrag (koopsom + kosten + verbouwing)
-  - Financiering overzicht met balans check
-  - Gedetailleerde maandlasten
-  - Hypotheekdetails (rente, looptijd, NHG)
-  - Praktische toelichtingen en tips
-  
-  Voor mensen zonder bestaande hypotheek die hun eerste huis willen kopen.`,
+        description: "Berekent de hypotheekopzet voor starters. Output: totaal benodigd bedrag, financieringsoverzicht en maandlast.",
         inputSchema: {
           type: "object",
+          description: `Gebruik basisintake plus woninginfo; zie ${OPZET_GUIDE_URI} voor detailvelden en defaults.`,
           properties: {
-            inkomen_aanvrager: {
-              type: "number",
-              description: "Bruto jaarinkomen van de hoofdaanvrager in euro's",
-            },
-            geboortedatum_aanvrager: {
-              type: "string",
-              description: "Geboortedatum aanvrager in formaat YYYY-MM-DD. TIP: Vraag de gebruiker naar zijn/haar leeftijd en reken dit om naar een geboortedatum waarbij de persoon morgen jarig wordt.",
-            },
-            heeft_partner: {
-              type: "boolean",
-              description: "Heeft de aanvrager een partner die mee aanvraagt?",
-            },
-            inkomen_partner: {
-              type: "number",
-              description: "OPTIONEEL - Bruto jaarinkomen van de partner in euro's. Alleen invullen indien heeft_partner: true",
-            },
-            geboortedatum_partner: {
-              type: "string",
-              description: "OPTIONEEL - Geboortedatum partner in formaat YYYY-MM-DD. Alleen invullen indien heeft_partner: true.",
-            },
-            verplichtingen_pm: {
-              type: "number",
-              description: "Maandelijkse verplichtingen in euro's (andere leningen, alimentatie, etc.). Gebruik 0 als er geen verplichtingen zijn.",
-              default: 0,
-            },
+            ...baseIntakeProperties,
             eigen_vermogen: {
               type: "number",
-              description: "Eigen geld beschikbaar in euro's (spaargeld, gift, etc.). Gebruik 0 als er geen eigen vermogen is.",
+              description: "Optioneel beschikbaar eigen geld in euro's.",
               default: 0,
             },
             nieuwe_woning: {
-              type: "object",
-              description: "Gegevens van de nieuwe woning die gekocht wordt",
-              properties: {
-                waarde_woning: {
-                  type: "number",
-                  description: "Koopsom van de nieuwe woning in euro's",
-                },
-                bedrag_verbouwen: {
-                  type: "number",
-                  description: "OPTIONEEL - Geschatte kosten voor verbouwing/meerwerk in euro's. Gebruik 0 als er geen verbouwing is.",
-                  default: 0,
-                },
-                bedrag_verduurzamen: {
-                  type: "number",
-                  description: "OPTIONEEL - Geschatte kosten voor verduurzaming in euro's. Gebruik 0 als er geen verduurzaming is.",
-                  default: 0,
-                },
-                kosten_percentage: {
-                  type: "number",
-                  description: "OPTIONEEL - Koperkosten als decimaal (bijv. 0.05 voor 5%). Standaard: 0.05 (= 5%)",
-                  default: 0.05,
-                },
-                energielabel: {
-                  type: "string",
-                  description: "OPTIONEEL - Energielabel van de nieuwe woning. Gebruik exacte notatie!",
-                  enum: ["A++++ (met garantie)", "A++++", "A+++", "A++", "A+", "A", "B", "C", "D", "E", "F", "G"],
-                },
-              },
-              required: ["waarde_woning"],
+              ...nieuweWoningSchema,
             },
             session_id: {
               type: "string",
-              description: "OPTIONEEL - Sessie ID voor het traceren van de conversatie. Haal deze waarde uit de n8n chat trigger: 'When chat message received' -> sessionId variabele.",
+              description: "Optioneel sessie-ID vanuit n8n (voor logging).",
             },
           },
           required: [
-            "inkomen_aanvrager",
-            "geboortedatum_aanvrager",
-            "heeft_partner",
+            ...baseIntakeRequired,
             "nieuwe_woning",
           ],
         },
       },
-      
       // Tool 6: Opzet hypotheek - Doorstromers
       {
         name: "opzet_hypotheek_doorstromer",
-        description: `Berekent de opzet van een hypotheek voor DOORSTROMERS (mensen met bestaande koopwoning en hypotheek).
-  
-  **Output bevat:**
-  - Complete breakdown van benodigd bedrag
-  - Financiering met opsplitsing: bestaande hypotheek + nieuwe hypotheek + overwaarde + eigen geld
-  - Maandlasten breakdown: bestaand (€X) + nieuw (€Y) = totaal (€Z)
-  - Stijging/daling maandlast ten opzichte van huidige situatie
-  - Praktische toelichtingen over overwaarde en financieringsstrategie
-  
-  Voor mensen die een nieuwe woning willen kopen en hun huidige woning verkopen.`,
+        description: "Berekent de hypotheekopzet voor doorstromers met bestaande woning. Output: benodigd bedrag, financiering per component en maandlasten (bestaand versus nieuw).",
         inputSchema: {
           type: "object",
+          description: `Gebruik basisintake, huidige woning en bestaande leningdelen; zie ${OPZET_GUIDE_URI} voor detailvelden en defaults.`,
           properties: {
-            inkomen_aanvrager: {
-              type: "number",
-              description: "Bruto jaarinkomen van de hoofdaanvrager in euro's",
-            },
-            geboortedatum_aanvrager: {
-              type: "string",
-              description: "Geboortedatum aanvrager in formaat YYYY-MM-DD",
-            },
-            heeft_partner: {
-              type: "boolean",
-              description: "Heeft de aanvrager een partner die mee aanvraagt?",
-            },
-            inkomen_partner: {
-              type: "number",
-              description: "OPTIONEEL - Bruto jaarinkomen van de partner in euro's. Alleen invullen indien heeft_partner: true",
-            },
-            geboortedatum_partner: {
-              type: "string",
-              description: "OPTIONEEL - Geboortedatum partner in formaat YYYY-MM-DD. Alleen invullen indien heeft_partner: true.",
-            },
-            verplichtingen_pm: {
-              type: "number",
-              description: "Maandelijkse verplichtingen in euro's. Gebruik 0 als er geen zijn.",
-              default: 0,
-            },
+            ...baseIntakeProperties,
             eigen_vermogen: {
               type: "number",
-              description: "Eigen geld beschikbaar in euro's (spaargeld, gift, etc.). Gebruik 0 als er geen eigen vermogen is.",
+              description: "Optioneel beschikbaar eigen geld in euro's.",
               default: 0,
             },
             waarde_huidige_woning: {
               type: "number",
-              description: "Huidige marktwaarde van de woning die verkocht wordt, in euro's",
+              description: "Marktwaarde van de huidige woning.",
             },
             bestaande_hypotheek: {
-              type: "object",
-              description: "Gegevens van de bestaande hypotheek. Twee opties: SIMPEL (1 leningdeel met totalen) of GEDETAILLEERD (alle leningdelen apart). BELANGRIJK: Rentes als decimaal (0.02 = 2%), looptijden in MAANDEN.",
-              properties: {
-                leningdelen: {
-                  type: "array",
-                  description: "Bestaande leningdelen. Voor SIMPELE berekening: 1 item met totale restschuld, gemiddelde rente, resterende looptijd in MAANDEN, rentevasteperiode_maanden: 10, hypotheekvorm: 'annuiteit'. Voor GEDETAILLEERDE berekening: elk leningdeel apart.",
-                  items: {
-                    type: "object",
-                    properties: {
-                      huidige_schuld: {
-                        type: "number",
-                        description: "Restschuld van dit leningdeel in euro's",
-                      },
-                      huidige_rente: {
-                        type: "number",
-                        description: "Rente als decimaal (bijv. 0.02 voor 2%, 0.041 voor 4.1%)",
-                      },
-                      resterende_looptijd_in_maanden: {
-                        type: "number",
-                        description: "Resterende looptijd in MAANDEN (niet jaren!). Bijvoorbeeld: 20 jaar = 240 maanden, 30 jaar = 360 maanden.",
-                      },
-                      rentevasteperiode_maanden: {
-                        type: "number",
-                        description: "Resterende rentevaste periode in MAANDEN. Bij simpele berekening: gebruik 10 maanden.",
-                      },
-                      hypotheekvorm: {
-                        type: "string",
-                        description: "Type hypotheek: 'annuiteit', 'lineair', of 'aflossingsvrij'",
-                        enum: ["annuiteit", "lineair", "aflossingsvrij"],
-                      },
-                    },
-                    required: ["huidige_schuld", "huidige_rente", "resterende_looptijd_in_maanden", "rentevasteperiode_maanden", "hypotheekvorm"],
-                  },
-                },
-              },
-              required: ["leningdelen"],
+              ...bestaandeHypotheekSchema,
             },
             nieuwe_woning: {
-              type: "object",
-              description: "Gegevens van de nieuwe woning die gekocht wordt",
-              properties: {
-                waarde_woning: {
-                  type: "number",
-                  description: "Koopsom van de nieuwe woning in euro's",
-                },
-                bedrag_verbouwen: {
-                  type: "number",
-                  description: "OPTIONEEL - Geschatte kosten voor verbouwing/meerwerk in euro's. Gebruik 0 als er geen verbouwing is.",
-                  default: 0,
-                },
-                bedrag_verduurzamen: {
-                  type: "number",
-                  description: "OPTIONEEL - Geschatte kosten voor verduurzaming in euro's. Gebruik 0 als er geen verduurzaming is.",
-                  default: 0,
-                },
-                kosten_percentage: {
-                  type: "number",
-                  description: "OPTIONEEL - Koperkosten als decimaal (bijv. 0.05 voor 5%). Standaard: 0.05 (= 5%)",
-                  default: 0.05,
-                },
-                energielabel: {
-                  type: "string",
-                  description: "OPTIONEEL - Energielabel van de nieuwe woning. Gebruik exacte notatie!",
-                  enum: ["A++++ (met garantie)", "A++++", "A+++", "A++", "A+", "A", "B", "C", "D", "E", "F", "G"],
-                },
-              },
-              required: ["waarde_woning"],
+              ...nieuweWoningSchema,
             },
             session_id: {
               type: "string",
-              description: "OPTIONEEL - Sessie ID voor het traceren van de conversatie. Haal deze waarde uit de n8n chat trigger: 'When chat message received' -> sessionId variabele.",
+              description: "Optioneel sessie-ID vanuit n8n (voor logging).",
             },
           },
           required: [
-            "inkomen_aanvrager",
-            "geboortedatum_aanvrager",
-            "heeft_partner",
+            ...baseIntakeRequired,
             "waarde_huidige_woning",
             "bestaande_hypotheek",
             "nieuwe_woning",
           ],
         },
       },
-      
       // Tool 7: Opzet hypotheek - Uitgebreid
       {
         name: "opzet_hypotheek_uitgebreid",

@@ -102,10 +102,11 @@ ${toneHint}${contextAddendum}
 
 Checklijst:
 1. Vraag ontbrekende kernvelden uit (inkomen, geboortedata, woningwaarde, verplichtingen, energielabel).
-2. Herhaal kritieke formatregels (rente als decimaal, looptijden in maanden).
-3. Beantwoord de vraag van ${aanspreking} en stel een logisch vervolgstap voor.
+2. Gebruik de Opzet Intake guide voor detaildefinities en defaults, zeker bij doorstromers.
+3. Herhaal kritieke formatregels (rente als decimaal, looptijden in maanden).
+4. Beantwoord de vraag van ${aanspreking} en stel een logisch vervolgstap voor.
 
-Verwijs expliciet naar de Quick Reference wanneer de gebruiker veel cijfers moet invullen.`;
+Verwijs expliciet naar de Quick Reference en de Opzet Intake guide wanneer de gebruiker veel cijfers moet invullen.`;
 
       return [
         {
@@ -115,6 +116,7 @@ Verwijs expliciet naar de Quick Reference wanneer de gebruiker veel cijfers moet
             text: introText,
           },
         },
+        createResourceLinkMessage('hypotheek://v4/guide/opzet-intake'),
         createResourceLinkMessage('hypotheek://v4/guide/quick-ref'),
         createResourceLinkMessage('hypotheek://v4/rules/format'),
       ];

@@ -88,7 +88,7 @@ export function loadConfig(): ServerConfig {
     
     // Server Info
     serverName: 'hypotheek-berekening-server',
-    serverVersion: '4.0.0'
+    serverVersion: '4.2.0'
   };
   
   // Valideer numerieke waarden

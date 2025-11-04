@@ -10,6 +10,7 @@ describe('MCP resources', () => {
     expect(names).toEqual([
       'examples-doorstromer',
       'examples-starter',
+      'guide-opzet-intake',
       'guide-output-formatting',
       'guide-playbook',
       'guide-quick-ref',

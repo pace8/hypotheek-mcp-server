@@ -7,6 +7,7 @@
 import winston from 'winston';
 import { LogLevel } from '../types/index.js';
 import { applyRedaction, RedactionLevel } from './pii-scrubber.js';
+import { getConfig } from '../config/index.js';
 
 // ==============================================================================
 // LOGGER CONFIGURATION
@@ -14,6 +15,7 @@ import { applyRedaction, RedactionLevel } from './pii-scrubber.js';
 
 const logLevel = (process.env.LOG_LEVEL || 'info') as string;
 const nodeEnv = process.env.NODE_ENV || 'development';
+const { serverVersion } = getConfig();
 
 /**
  * Custom log format
@@ -42,7 +44,7 @@ const baseLogger = winston.createLogger({
   format: logFormat,
   defaultMeta: {
     service: 'hypotheek-mcp-server',
-    version: '4.0.0',
+    version: serverVersion,
     environment: nodeEnv
   },
   transports: [

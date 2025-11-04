@@ -26,6 +26,7 @@ describe('MCP prompts', () => {
       .filter((message) => message.content.type === 'resource_link')
       .map((message) => message.content.uri);
     expect(resourceUris).toContain('hypotheek://v4/guide/quick-ref');
+    expect(resourceUris).toContain('hypotheek://v4/guide/opzet-intake');
   });
 
   it('coerces numeric arguments and embeds recovery resource', () => {
