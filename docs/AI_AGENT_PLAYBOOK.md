@@ -1,7 +1,7 @@
 # AI Agent Playbook - Hypotheek MCP Server v4.0
 
 **Laatste update:** 2025-11-03  
-**Versie:** 4.0.0  
+**Versie:** 5.0.0  
 **Doelgroep:** AI Agents (Claude, GPT-4, n8n workflows)
 
 ---
@@ -1098,7 +1098,7 @@ while (retries < 3) {
 - Test met voorbeelden uit deze guide
 
 **Updates:**
-Deze playbook wordt bijgewerkt bij elke major release. Huidige versie: 4.0.0 (2025-11-03).
+Deze playbook wordt bijgewerkt bij elke major release. Huidige versie: 5.0.0 (2025-11-04).
 
 ---
 

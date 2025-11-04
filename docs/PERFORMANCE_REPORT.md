@@ -1,7 +1,7 @@
 # Performance Report - Hypotheek MCP Server v4.0
 
 **Datum:** 2025-11-03  
-**Versie:** 4.0.0  
+**Versie:** 5.0.0  
 **Test Duration:** 5 uur  
 **Test Tools:** Custom load test scripts + monitoring
 

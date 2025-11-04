@@ -1,5 +1,18 @@
 # Changelog - Hypotheek MCP Server
 
+## [5.0.0] - 2025-11-04
+
+### ✨ Highlights
+- Gedeelde toolschemas en compacte descriptions (`src/index.ts`), inclusief generieke toolhandler.
+- Opzet-intake en formatting guides verplaatst naar Markdownresources in `docs/`, waardoor de toolcatalogus klein blijft.
+- Config-loader herschreven met Zod-validatie (`src/config/index.ts`); leest versie automatisch uit `package.json`.
+- README opgeschoond en nieuwe configuratiehandleiding toegevoegd (`docs/CONFIG.md`).
+- Alle resources/prompts verwijzen nu naar de nieuwe guides voor detailinformatie.
+
+### 🔄 Migratie
+- Zorg dat `REPLIT_API_KEY` is gezet (geen implicit fallback meer buiten testomgeving).
+- Tools en responses blijven backward compatible; clientcache verversen aanbevolen door versiebump naar 5.0.0.
+
 ## [4.0.0] - 2025-11-03
 
 ### 🎉 Major Release - Complete Refactor

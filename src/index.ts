@@ -10,15 +10,11 @@ import {
   ListToolsRequestSchema,
   ReadResourceRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-// ============================================================================
-// FASE 1: Nieuwe imports voor type safety, validatie, logging en config
-// ============================================================================
 import { createLogger } from './utils/logger.js';
 import { getConfig } from './config/index.js';
 import { 
   validateBaseArguments, 
   validateDoorstromerArguments,
-  validateLeningdeel,
   validateBestaandeHypotheek
 } from './validation/schemas.js';
 import { ValidationError, normalizeEnergielabel, APIError, ErrorCode } from './types/index.js';
@@ -32,11 +28,7 @@ import { recordToolCall, recordValidationError } from './metrics/exporter.js';
 import { listResources, readResource } from './resources/index.js';
 import { getPrompt, listPrompts } from './prompts/index.js';
 
-
-// ============================================================================
-// FASE 1: Config laden (vervangt hardcoded URLs en API key check)
-// ============================================================================
-const config = getConfig(); // Dit gooit automatisch error als REPLIT_API_KEY ontbreekt
+const config = getConfig();
 
 // API URLs uit config
 const REPLIT_API_URL_BEREKENEN = config.replitApiUrlBerekenen;
@@ -262,12 +254,426 @@ const server = new Server(
   }
 );
 
-// Helper functie om energielabel te normaliseren
-// ============================================================================
-// FASE 1: normalizeEnergielabel is nu geïmporteerd uit types/index.ts
-// Oude functie hieronder is niet meer nodig, maar we laten hem staan voor backwards compat
-// ============================================================================
-// (verwijderd in Fase 1)
+type ToolResponse = {
+  content: Array<{
+    type: "text";
+    text: string;
+  }>;
+};
+
+type ToolErrorResponse = ToolResponse & { isError: true };
+type ToolHandler = (request: any) => Promise<ToolResponse>;
+
+function successResponse(text: string): ToolResponse {
+  return {
+    content: [
+      {
+        type: "text",
+        text,
+      },
+    ],
+  };
+}
+
+function errorResponse(error: unknown, sessionId?: string): ToolErrorResponse {
+  if (error instanceof ValidationError) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(error.toStructured(sessionId), null, 2),
+        },
+      ],
+      isError: true,
+    };
+  }
+
+  if (error instanceof APIError) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(error.toStructured(sessionId), null, 2),
+        },
+      ],
+      isError: true,
+    };
+  }
+
+  const message = error instanceof Error ? error.message : String(error);
+  return {
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify(
+          {
+            code: ErrorCode.UNKNOWN_ERROR,
+            message,
+            correlation_id: sessionId,
+          },
+          null,
+          2
+        ),
+      },
+    ],
+    isError: true,
+  };
+}
+
+function requireArguments<T>(request: any): T {
+  if (!request.params?.arguments) {
+    throw new ValidationError(
+      ErrorCode.INVALID_INPUT,
+      'Arguments zijn verplicht',
+      'arguments'
+    );
+  }
+  return request.params.arguments as unknown as T;
+}
+
+function extractSessionId(args: unknown): string | undefined {
+  if (args && typeof args === 'object' && 'session_id' in (args as Record<string, unknown>)) {
+    return (args as Record<string, unknown>).session_id as string | undefined;
+  }
+  return undefined;
+}
+
+function mapAanvragers(args: {
+  inkomen_aanvrager: number;
+  geboortedatum_aanvrager: string;
+  heeft_partner: boolean;
+  inkomen_partner?: number;
+  geboortedatum_partner?: string;
+  verplichtingen_pm?: number;
+}) {
+  return {
+    inkomen_aanvrager: args.inkomen_aanvrager,
+    geboortedatum_aanvrager: args.geboortedatum_aanvrager,
+    heeft_partner: args.heeft_partner,
+    inkomen_partner: args.inkomen_partner ?? 0,
+    geboortedatum_partner: args.geboortedatum_partner ?? null,
+    verplichtingen_pm: args.verplichtingen_pm ?? 0,
+  };
+}
+
+function mapOpzetAanvrager(args: OpzetBaseArguments) {
+  return {
+    inkomen_aanvrager: args.inkomen_aanvrager,
+    geboortedatum_aanvrager: args.geboortedatum_aanvrager,
+    heeft_partner: args.heeft_partner,
+    inkomen_partner: args.inkomen_partner ?? 0,
+    geboortedatum_partner: args.geboortedatum_partner ?? null,
+    verplichtingen_pm: args.verplichtingen_pm ?? 0,
+    eigen_vermogen: args.eigen_vermogen ?? 0,
+  };
+}
+
+function buildNieuweLeningPayload(raw: any): any | undefined {
+  if (!raw || typeof raw !== 'object') {
+    return undefined;
+  }
+
+  const payload: Record<string, unknown> = {};
+
+  const looptijdMaanden =
+    raw.looptijd_maanden ??
+    (typeof raw.looptijd_jaren === 'number' ? raw.looptijd_jaren * 12 : undefined);
+  if (looptijdMaanden) {
+    payload.looptijd_maanden = looptijdMaanden;
+  }
+
+  const rentevastMaanden =
+    raw.rentevaste_periode_maanden ??
+    (typeof raw.rentevast_periode_jaren === 'number' ? raw.rentevast_periode_jaren * 12 : undefined);
+  if (rentevastMaanden) {
+    payload.rentevaste_periode_maanden = rentevastMaanden;
+  }
+
+  if (raw.rente !== undefined) {
+    payload.rente = raw.rente;
+  }
+
+  if (raw.hypotheekvorm) {
+    payload.hypotheekvorm = raw.hypotheekvorm;
+  } else if (raw.type) {
+    payload.hypotheekvorm = raw.type;
+  }
+
+  if (raw.energielabel) {
+    payload.energielabel = normalizeEnergielabel(raw.energielabel);
+  }
+
+  if (raw.nhg !== undefined) {
+    payload.nhg = raw.nhg;
+  }
+
+  if (raw.ltv !== undefined) {
+    let ltvValue: number | undefined;
+    if (typeof raw.ltv === 'string') {
+      const parsed = parseFloat(raw.ltv.replace('%', ''));
+      ltvValue = Number.isFinite(parsed) ? parsed / 100 : undefined;
+    } else if (typeof raw.ltv === 'number') {
+      ltvValue = raw.ltv;
+    }
+    if (ltvValue !== undefined) {
+      payload.ltv = ltvValue;
+    }
+  }
+
+  if (Array.isArray(raw.renteklassen) && raw.renteklassen.length > 0) {
+    payload.renteklassen = raw.renteklassen;
+  }
+
+  return Object.keys(payload).length > 0 ? payload : undefined;
+}
+
+async function handleBerekenStarter(request: any): Promise<ToolResponse> {
+  const args = requireArguments<BaseArguments>(request);
+  const logger = createLogger(args.session_id);
+
+  validateBaseArguments(args);
+  enforceRateLimit(args.session_id);
+
+  const payload: any = {
+    aanvragers: mapAanvragers(args),
+  };
+
+  if (args.session_id) {
+    payload.session_id = args.session_id;
+  }
+
+  const apiClient = getApiClient();
+  const { data } = await apiClient.post(
+    REPLIT_API_URL_BEREKENEN,
+    payload,
+    { correlationId: args.session_id }
+  );
+
+  logger.info('Toolcall succesvol', { tool: 'bereken_hypotheek_starter' });
+  return successResponse(formatResponse(data, "bereken_hypotheek_starter"));
+}
+
+async function handleBerekenDoorstromer(request: any): Promise<ToolResponse> {
+  const rawArgs = requireArguments<DoorstromerArguments>(request);
+  const normalizedArgs = normalizeDoorstromerArgs(rawArgs) as DoorstromerArguments;
+  const logger = createLogger(normalizedArgs.session_id);
+
+  validateDoorstromerArguments(normalizedArgs);
+  enforceRateLimit(normalizedArgs.session_id);
+
+  const payload: any = {
+    aanvragers: mapAanvragers(normalizedArgs),
+    bestaande_hypotheek: {
+      waarde_huidige_woning: normalizedArgs.waarde_huidige_woning,
+      leningdelen: normalizedArgs.bestaande_hypotheek.leningdelen,
+    },
+  };
+
+  if (normalizedArgs.session_id) {
+    payload.session_id = normalizedArgs.session_id;
+  }
+
+  const apiClient = getApiClient();
+  const { data } = await apiClient.post(
+    REPLIT_API_URL_BEREKENEN,
+    payload,
+    { correlationId: normalizedArgs.session_id }
+  );
+
+  logger.info('Toolcall succesvol', { tool: 'bereken_hypotheek_doorstromer' });
+  return successResponse(formatResponse(data, "bereken_hypotheek_doorstromer"));
+}
+
+async function handleBerekenUitgebreid(request: any): Promise<ToolResponse> {
+  const rawArgs = requireArguments<UitgebreidArguments>(request);
+  const normalizedArgs = rawArgs.is_doorstromer
+    ? (normalizeDoorstromerArgs(rawArgs) as UitgebreidArguments)
+    : rawArgs;
+  const logger = createLogger(normalizedArgs.session_id);
+
+  validateBaseArguments(normalizedArgs as BaseArguments);
+  if (normalizedArgs.is_doorstromer && normalizedArgs.bestaande_hypotheek) {
+    validateBestaandeHypotheek(normalizedArgs.bestaande_hypotheek);
+  }
+
+  enforceRateLimit(normalizedArgs.session_id);
+
+  const payload: any = {
+    aanvragers: mapAanvragers(normalizedArgs),
+  };
+
+  if (normalizedArgs.is_doorstromer && normalizedArgs.waarde_huidige_woning && normalizedArgs.bestaande_hypotheek) {
+    payload.bestaande_hypotheek = {
+      waarde_huidige_woning: normalizedArgs.waarde_huidige_woning,
+      leningdelen: normalizedArgs.bestaande_hypotheek.leningdelen,
+    };
+  }
+
+  const maatwerk = (normalizedArgs as any).nieuwe_hypotheek ?? (normalizedArgs as any).nieuwe_lening;
+  const nieuweLening = buildNieuweLeningPayload(maatwerk);
+  if (nieuweLening) {
+    payload.nieuwe_lening = nieuweLening;
+  }
+
+  if (normalizedArgs.session_id) {
+    payload.session_id = normalizedArgs.session_id;
+  }
+
+  const apiClient = getApiClient();
+  const { data } = await apiClient.post(
+    REPLIT_API_URL_BEREKENEN,
+    payload,
+    { correlationId: normalizedArgs.session_id }
+  );
+
+  logger.info('Toolcall succesvol', { tool: 'bereken_hypotheek_uitgebreid' });
+  return successResponse(formatResponse(data, "bereken_hypotheek_uitgebreid"));
+}
+
+async function handleActueleRentes(request: any): Promise<ToolResponse> {
+  const sessionId = extractSessionId(request.params?.arguments);
+  if (sessionId) {
+    enforceRateLimit(sessionId);
+  }
+
+  const apiClient = getApiClient();
+  const { data } = await apiClient.get(REPLIT_API_URL_RENTES, { correlationId: sessionId });
+  return successResponse(JSON.stringify(data, null, 2));
+}
+
+async function handleOpzetStarter(request: any): Promise<ToolResponse> {
+  const args = requireArguments<OpzetStarterArguments>(request);
+  const logger = createLogger(args.session_id);
+
+  validateBaseArguments(args as BaseArguments);
+  enforceRateLimit(args.session_id);
+
+  const payload: any = {
+    aanvrager: mapOpzetAanvrager(args),
+    nieuwe_woning: {
+      waarde_woning: args.nieuwe_woning.waarde_woning,
+      bedrag_verbouwen: args.nieuwe_woning.bedrag_verbouwen ?? 0,
+      bedrag_verduurzamen: args.nieuwe_woning.bedrag_verduurzamen ?? 0,
+      kosten_percentage: args.nieuwe_woning.kosten_percentage ?? 0.05,
+      energielabel: normalizeEnergielabel(args.nieuwe_woning.energielabel || ''),
+    },
+  };
+
+  if (args.session_id) {
+    payload.session_id = args.session_id;
+  }
+
+  const apiClient = getApiClient();
+  const { data } = await apiClient.post(
+    REPLIT_API_URL_OPZET,
+    payload,
+    { correlationId: args.session_id }
+  );
+
+  logger.info('Toolcall succesvol', { tool: 'opzet_hypotheek_starter' });
+  return successResponse(formatResponse(data, "opzet_hypotheek_starter"));
+}
+
+async function handleOpzetDoorstromer(request: any): Promise<ToolResponse> {
+  const rawArgs = requireArguments<OpzetDoorstromerArguments>(request);
+  const normalizedArgs = normalizeOpzetDoorstromerArgs(rawArgs) as OpzetDoorstromerArguments;
+  const logger = createLogger(normalizedArgs.session_id);
+
+  validateBaseArguments(normalizedArgs as BaseArguments);
+  validateBestaandeHypotheek(normalizedArgs.bestaande_hypotheek);
+  enforceRateLimit(normalizedArgs.session_id);
+
+  const payload: any = {
+    aanvrager: mapOpzetAanvrager(normalizedArgs),
+    bestaande_hypotheek: {
+      waarde_huidige_woning: normalizedArgs.waarde_huidige_woning,
+      leningdelen: normalizedArgs.bestaande_hypotheek.leningdelen,
+    },
+    nieuwe_woning: {
+      waarde_woning: normalizedArgs.nieuwe_woning.waarde_woning,
+      bedrag_verbouwen: normalizedArgs.nieuwe_woning.bedrag_verbouwen ?? 0,
+      bedrag_verduurzamen: normalizedArgs.nieuwe_woning.bedrag_verduurzamen ?? 0,
+      kosten_percentage: normalizedArgs.nieuwe_woning.kosten_percentage ?? 0.05,
+      energielabel: normalizeEnergielabel(normalizedArgs.nieuwe_woning.energielabel || ''),
+    },
+  };
+
+  if (normalizedArgs.session_id) {
+    payload.session_id = normalizedArgs.session_id;
+  }
+
+  const apiClient = getApiClient();
+  const { data } = await apiClient.post(
+    REPLIT_API_URL_OPZET,
+    payload,
+    { correlationId: normalizedArgs.session_id }
+  );
+
+  logger.info('Toolcall succesvol', { tool: 'opzet_hypotheek_doorstromer' });
+  return successResponse(formatResponse(data, "opzet_hypotheek_doorstromer"));
+}
+
+async function handleOpzetUitgebreid(request: any): Promise<ToolResponse> {
+  const rawArgs = requireArguments<OpzetUitgebreidArguments>(request);
+  const normalizedArgs = rawArgs.is_doorstromer
+    ? (normalizeOpzetDoorstromerArgs(rawArgs) as OpzetUitgebreidArguments)
+    : rawArgs;
+  const logger = createLogger(normalizedArgs.session_id);
+
+  validateBaseArguments(normalizedArgs as BaseArguments);
+  if (normalizedArgs.is_doorstromer && normalizedArgs.bestaande_hypotheek) {
+    validateBestaandeHypotheek(normalizedArgs.bestaande_hypotheek);
+  }
+  enforceRateLimit(normalizedArgs.session_id);
+
+  const payload: any = {
+    aanvrager: mapOpzetAanvrager(normalizedArgs),
+    nieuwe_woning: {
+      waarde_woning: normalizedArgs.nieuwe_woning.waarde_woning,
+      bedrag_verbouwen: normalizedArgs.nieuwe_woning.bedrag_verbouwen ?? 0,
+      bedrag_verduurzamen: normalizedArgs.nieuwe_woning.bedrag_verduurzamen ?? 0,
+      kosten_percentage: normalizedArgs.nieuwe_woning.kosten_percentage ?? 0.05,
+      energielabel: normalizeEnergielabel(normalizedArgs.nieuwe_woning.energielabel || ''),
+    },
+  };
+
+  if (normalizedArgs.is_doorstromer && normalizedArgs.waarde_huidige_woning && normalizedArgs.bestaande_hypotheek) {
+    payload.bestaande_hypotheek = {
+      waarde_huidige_woning: normalizedArgs.waarde_huidige_woning,
+      leningdelen: normalizedArgs.bestaande_hypotheek.leningdelen,
+    };
+  }
+
+  const maatwerk = (normalizedArgs as any).nieuwe_hypotheek ?? (normalizedArgs as any).nieuwe_lening;
+  const nieuweLening = buildNieuweLeningPayload(maatwerk);
+  if (nieuweLening) {
+    payload.nieuwe_lening = nieuweLening;
+  }
+
+  if (normalizedArgs.session_id) {
+    payload.session_id = normalizedArgs.session_id;
+  }
+
+  const apiClient = getApiClient();
+  const { data } = await apiClient.post(
+    REPLIT_API_URL_OPZET,
+    payload,
+    { correlationId: normalizedArgs.session_id }
+  );
+
+  logger.info('Toolcall succesvol', { tool: 'opzet_hypotheek_uitgebreid' });
+  return successResponse(formatResponse(data, "opzet_hypotheek_uitgebreid"));
+}
+
+const TOOL_HANDLERS: Record<string, ToolHandler> = {
+  bereken_hypotheek_starter: handleBerekenStarter,
+  bereken_hypotheek_doorstromer: handleBerekenDoorstromer,
+  bereken_hypotheek_uitgebreid: handleBerekenUitgebreid,
+  haal_actuele_rentes_op: handleActueleRentes,
+  opzet_hypotheek_starter: handleOpzetStarter,
+  opzet_hypotheek_doorstromer: handleOpzetDoorstromer,
+  opzet_hypotheek_uitgebreid: handleOpzetUitgebreid,
+};
 
 // Lijst met beschikbare tools
 server.setRequestHandler(ListToolsRequestSchema, async () => {
@@ -1093,823 +1499,27 @@ ${deelType} ${index + 1}:
 // Handler voor tool calls
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const startTime = Date.now();
-  const toolName = request.params && (request.params.name || 'unknown_tool');
-  let success = false;
+  const toolName = request.params?.name ?? 'unknown_tool';
+  const handler = TOOL_HANDLERS[toolName];
+  const sessionId = extractSessionId(request.params?.arguments);
+
+  if (!handler) {
+    const error = new ValidationError(ErrorCode.INVALID_INPUT, `Onbekende tool: ${toolName}`, 'tool');
+    recordToolCall(toolName, Date.now() - startTime, false);
+    try { recordValidationError(error.code); } catch { /* ignore metrics failure */ }
+    return errorResponse(error, sessionId);
+  }
+
   try {
-    success = true;
-  // Tool 1: Starters
-  if (request.params.name === "bereken_hypotheek_starter") {
-    try {
-      // Type guard to check if arguments exists
-      if (!request.params.arguments) {
-        throw new Error("Arguments are required");
-      }
-
-      const args = request.params.arguments as unknown as BaseArguments;
-
-      
-
-// ========================================================================
-// FASE 1: Validatie en logging voor bereken_hypotheek_starter
-// ========================================================================
-const logger = createLogger(args.session_id);
-try {
-  validateBaseArguments(args);
-  logger.info('Validation passed', { 
-    tool: 'bereken_hypotheek_starter',
-    heeft_partner: args.heeft_partner,
-    has_session_id: !!args.session_id
-  });
-} catch (validationError) {
-  if (validationError instanceof ValidationError) {
-    logger.validationWarning(
-      validationError.message,
-      // @ts-ignore
-      validationError.field,
-      // @ts-ignore
-      validationError.value
-    );
-    // Fase 1: Niet blokkeren, alleen warning
-  } else {
-    logger.warn('Unexpected validation error', { error: String(validationError) });
-  }
-}
-// ========================================================================
-// If validation fails, block execution and return a structured error (Fase 2)
-
-// Transform naar API format
-      const apiPayload: any = {
-        aanvragers: {
-          inkomen_aanvrager: args.inkomen_aanvrager,
-          geboortedatum_aanvrager: args.geboortedatum_aanvrager,
-          heeft_partner: args.heeft_partner,
-          inkomen_partner: args.inkomen_partner,
-          geboortedatum_partner: args.geboortedatum_partner,
-          verplichtingen_pm: args.verplichtingen_pm || 0,
-        },
-      };
-
-      // Voeg session_id toe indien aanwezig
-      if (args.session_id) {
-        apiPayload.session_id = args.session_id;
-      }
-
-      // Rate limit enforcement
-      enforceRateLimit(args.session_id);
-
-      // Use API client with retry/timeout and correlation id
-      const apiClient = getApiClient();
-      try {
-        const apiResponse = await apiClient.post(REPLIT_API_URL_BEREKENEN, apiPayload, { correlationId: args.session_id });
-        const data = apiResponse.data;
-
-        return {
-          content: [
-            {
-              type: "text",
-              text: formatResponse(data, "bereken_hypotheek_starter"),
-            },
-          ],
-        };
-      } catch (err) {
-        throw err;
-      }
-
-    } catch (error) {
-      const sessionId = request.params.arguments && (request.params.arguments as any).session_id;
-      // Structured error responses for ValidationError and APIError
-      if (error instanceof ValidationError) {
-        return {
-          content: [{
-            type: "text",
-            text: JSON.stringify(error.toStructured(sessionId), null, 2)
-          }],
-          isError: true,
-        };
-      }
-
-      if (error instanceof APIError) {
-        return {
-          content: [{
-            type: "text",
-            text: JSON.stringify(error.toStructured(sessionId), null, 2)
-          }],
-          isError: true,
-        };
-      }
-
-      // Unknown error
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            code: ErrorCode.UNKNOWN_ERROR,
-            message: error instanceof Error ? error.message : String(error),
-            correlation_id: sessionId
-          }, null, 2)
-        }],
-        isError: true,
-      };
+    const response = await handler(request);
+    recordToolCall(toolName, Date.now() - startTime, true);
+    return response;
+  } catch (error) {
+    recordToolCall(toolName, Date.now() - startTime, false);
+    if (error instanceof ValidationError) {
+      try { recordValidationError(error.code); } catch { /* ignore metrics failure */ }
     }
-  }
-
-  // Tool 2: Doorstromers
-  if (request.params.name === "bereken_hypotheek_doorstromer") {
-    try {
-      // Type guard to check if arguments exists
-      if (!request.params.arguments) {
-        throw new Error("Arguments are required");
-      }
-
-  const args = request.params.arguments as unknown as DoorstromerArguments;
-
-  // Normaliseer inputvelden zodat varianten en LLM-output geaccepteerd worden
-  const normalizedArgs = normalizeDoorstromerArgs(args);
-
-// ========================================================================
-// FASE 2: Validatie en logging voor bereken_hypotheek_doorstromer (blocking)
-// ========================================================================
-const logger = createLogger(normalizedArgs.session_id);
-try {
-  validateDoorstromerArguments(normalizedArgs);
-  logger.info('Validation passed', { 
-    tool: 'bereken_hypotheek_doorstromer',
-    woningwaarde: normalizedArgs.waarde_huidige_woning,
-    aantal_leningdelen: normalizedArgs.bestaande_hypotheek?.leningdelen?.length
-  });
-} catch (validationError) {
-  if (validationError instanceof ValidationError) {
-    logger.error('Validation failed - blocking execution', validationError);
-    return {
-      content: [{
-        type: "text",
-        text: JSON.stringify({
-          error: "Validatiefout",
-          message: validationError.message,
-          field: (validationError as any).field,
-          details: validationError.toStructured(normalizedArgs.session_id),
-          help: "Controleer of alle verplichte velden correct zijn ingevuld"
-        }, null, 2)
-      }],
-      isError: true,
-    };
-  }
-  throw validationError;
-}
-// ========================================================================
-
-// Transform naar API format
-      const apiPayload: any = {
-        aanvragers: {
-          inkomen_aanvrager: args.inkomen_aanvrager,
-          geboortedatum_aanvrager: args.geboortedatum_aanvrager,
-          heeft_partner: args.heeft_partner,
-          inkomen_partner: args.inkomen_partner,
-          geboortedatum_partner: args.geboortedatum_partner,
-          verplichtingen_pm: args.verplichtingen_pm || 0,
-        },
-        bestaande_hypotheek: {
-          waarde_huidige_woning: normalizedArgs.waarde_huidige_woning,
-          leningdelen: normalizedArgs.bestaande_hypotheek.leningdelen,
-        },
-      };
-
-      // Voeg session_id toe indien aanwezig
-      if (normalizedArgs.session_id) {
-        apiPayload.session_id = normalizedArgs.session_id;
-      }
-
-      // Rate limit enforcement
-      enforceRateLimit(normalizedArgs.session_id);
-
-      const apiClient = getApiClient();
-      try {
-  const apiResponse = await apiClient.post(REPLIT_API_URL_BEREKENEN, apiPayload, { correlationId: normalizedArgs.session_id });
-        const data = apiResponse.data;
-
-        return {
-          content: [
-            {
-              type: "text",
-              text: formatResponse(data, "bereken_hypotheek_doorstromer"),
-            },
-          ],
-        };
-      } catch (err) {
-        throw err;
-      }
-    } catch (error) {
-      const sessionId = request.params.arguments && (request.params.arguments as any).session_id;
-      if (error instanceof ValidationError) {
-        return {
-          content: [{ type: 'text', text: JSON.stringify(error.toStructured(sessionId), null, 2) }],
-          isError: true,
-        };
-      }
-      if (error instanceof APIError) {
-        return {
-          content: [{ type: 'text', text: JSON.stringify(error.toStructured(sessionId), null, 2) }],
-          isError: true,
-        };
-      }
-      return {
-        content: [{ type: 'text', text: JSON.stringify({ code: ErrorCode.UNKNOWN_ERROR, message: error instanceof Error ? error.message : String(error), correlation_id: sessionId }, null, 2) }],
-        isError: true,
-      };
-    }
-  }
-
-  // Tool 3: Uitgebreid
-  if (request.params.name === "bereken_hypotheek_uitgebreid") {
-    try {
-      // Type guard to check if arguments exists
-      if (!request.params.arguments) {
-        throw new Error("Arguments are required");
-      }
-
-      const args = request.params.arguments as unknown as UitgebreidArguments;
-
-      // Normaliseer alleen wanneer dit een doorstromer-case is
-      const normalizedArgs = (args as any).is_doorstromer ? normalizeDoorstromerArgs(args) : args;
-
-
-// ========================================================================
-// FASE 2: Validatie en logging voor bereken_hypotheek_uitgebreid (blocking)
-// ========================================================================
-const logger = createLogger((normalizedArgs as any).session_id);
-try {
-  // Valideer base arguments
-  validateBaseArguments(normalizedArgs as any);
-  // Als doorstromer, valideer ook die gegevens
-  if ((normalizedArgs as any).is_doorstromer && (normalizedArgs as any).bestaande_hypotheek) {
-    validateBestaandeHypotheek((normalizedArgs as any).bestaande_hypotheek);
-  }
-  logger.info('Validation passed', { 
-    tool: 'bereken_hypotheek_uitgebreid',
-    is_doorstromer: (normalizedArgs as any).is_doorstromer,
-    heeft_custom_params: !!(normalizedArgs as any).nieuwe_hypotheek
-  });
-} catch (validationError) {
-  if (validationError instanceof ValidationError) {
-    logger.error('Validation failed - blocking execution', validationError);
-    return {
-      content: [{
-        type: "text",
-        text: JSON.stringify({
-          error: "Validatiefout",
-          message: validationError.message,
-          field: (validationError as any).field,
-          details: validationError.toStructured((normalizedArgs as any).session_id),
-          help: "Controleer of alle verplichte velden correct zijn ingevuld"
-        }, null, 2)
-      }],
-      isError: true,
-    };
-  }
-  throw validationError;
-}
-// ========================================================================
-
-// Debug: log de ontvangen arguments
-  console.error("=== UITGEBREID TOOL - Ontvangen arguments ===");
-  console.error(JSON.stringify(normalizedArgs, null, 2));
-      
-      // Transform naar API format
-      const apiPayload: any = {
-        aanvragers: {
-          inkomen_aanvrager: args.inkomen_aanvrager,
-          geboortedatum_aanvrager: args.geboortedatum_aanvrager,
-          heeft_partner: args.heeft_partner,
-          inkomen_partner: args.inkomen_partner,
-          geboortedatum_partner: args.geboortedatum_partner,
-          verplichtingen_pm: args.verplichtingen_pm || 0,
-        },
-      };
-
-      // Voeg bestaande hypotheek toe als doorstromer
-      if ((normalizedArgs as any).is_doorstromer && (normalizedArgs as any).waarde_huidige_woning && (normalizedArgs as any).bestaande_hypotheek) {
-        apiPayload.bestaande_hypotheek = {
-          waarde_huidige_woning: (normalizedArgs as any).waarde_huidige_woning,
-          leningdelen: (normalizedArgs as any).bestaande_hypotheek.leningdelen,
-        };
-      }
-
-      // Voeg session_id toe indien aanwezig
-      if ((normalizedArgs as any).session_id) {
-        apiPayload.session_id = (normalizedArgs as any).session_id;
-      }
-
-      // Voeg nieuwe hypotheek parameters toe
-      if ((normalizedArgs as any).nieuwe_hypotheek) {
-        // Fix ltv als het als string binnenkomt (bijv. "100%")
-        let ltvValue: number = 1.0;
-        const nh = (normalizedArgs as any).nieuwe_hypotheek;
-        if (nh.ltv) {
-          if (typeof nh.ltv === 'string') {
-            ltvValue = parseFloat((nh.ltv as string).replace('%', '')) / 100;
-          } else {
-            ltvValue = nh.ltv as number;
-          }
-        }
-
-        const energielabel = normalizeEnergielabel(nh.energielabel || '');
-
-        apiPayload.nieuwe_lening = {
-          looptijd_maanden: nh.looptijd_maanden || 360,
-          rentevaste_periode_maanden: nh.rentevaste_periode_maanden || 120,
-          rente: nh.rente,
-          hypotheekvorm: nh.hypotheekvorm || "annuiteit",
-          energielabel: energielabel,
-          nhg: nh.nhg || false,
-          ltv: ltvValue,
-        };
-      }
-
-      // Debug: log wat naar API gestuurd wordt
-      console.error("=== UITGEBREID TOOL - API Payload ===");
-      console.error(JSON.stringify(apiPayload, null, 2));
-
-      // Rate limit enforcement
-      enforceRateLimit((normalizedArgs as any).session_id);
-
-      const apiClient = getApiClient();
-      try {
-        const apiResponse = await apiClient.post(REPLIT_API_URL_BEREKENEN, apiPayload, { correlationId: (normalizedArgs as any).session_id });
-        const data = apiResponse.data;
-
-        return {
-          content: [
-            {
-              type: "text",
-              text: formatResponse(data, "bereken_hypotheek_uitgebreid"),
-            },
-          ],
-        };
-      } catch (err) {
-        throw err;
-      }
-    } catch (error) {
-      const sessionId = request.params.arguments && (request.params.arguments as any).session_id;
-      if (error instanceof ValidationError) {
-        return {
-          content: [{ type: 'text', text: JSON.stringify(error.toStructured(sessionId), null, 2) }],
-          isError: true,
-        };
-      }
-      if (error instanceof APIError) {
-        return {
-          content: [{ type: 'text', text: JSON.stringify(error.toStructured(sessionId), null, 2) }],
-          isError: true,
-        };
-      }
-      return {
-        content: [{ type: 'text', text: JSON.stringify({ code: ErrorCode.UNKNOWN_ERROR, message: error instanceof Error ? error.message : String(error), correlation_id: sessionId }, null, 2) }],
-        isError: true,
-      };
-    }
-  }
-
-  // Tool 4: Actuele rentes
-  if (request.params.name === "haal_actuele_rentes_op") {
-    try {
-      // Enforce per-session rate limit and use API client for timeout/retries
-      const sessionId = request.params.arguments && (request.params.arguments as any).session_id;
-      enforceRateLimit(sessionId);
-      const apiClient = getApiClient();
-      try {
-        const apiResponse = await apiClient.get(REPLIT_API_URL_RENTES, { correlationId: sessionId });
-        const data = apiResponse.data;
-
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(data, null, 2),
-            },
-          ],
-        };
-      } catch (err) {
-        throw err;
-      }
-    } catch (error) {
-      const sessionId = request.params.arguments && (request.params.arguments as any).session_id;
-      if (error instanceof ValidationError) {
-        return {
-          content: [{ type: 'text', text: JSON.stringify(error.toStructured(sessionId), null, 2) }],
-          isError: true,
-        };
-      }
-      if (error instanceof APIError) {
-        return {
-          content: [{ type: 'text', text: JSON.stringify(error.toStructured(sessionId), null, 2) }],
-          isError: true,
-        };
-      }
-      return {
-        content: [{ type: 'text', text: JSON.stringify({ code: ErrorCode.UNKNOWN_ERROR, message: error instanceof Error ? error.message : String(error), correlation_id: sessionId }, null, 2) }],
-        isError: true,
-      };
-    }
-  }
-
-  // Tool 5: Opzet hypotheek - Starter
-  if (request.params.name === "opzet_hypotheek_starter") {
-    try {
-      if (!request.params.arguments) {
-        throw new Error("Arguments are required");
-      }
-
-      const args = request.params.arguments as unknown as OpzetStarterArguments;
-
-      
-
-
-
-// ========================================================================
-// FASE 1: Logging voor haal_actuele_rentes_op (geen validatie nodig)
-// ========================================================================
-const loggerRentes = createLogger(); // Geen session_id beschikbaar
-loggerRentes.info('Fetching current rates', { tool: 'haal_actuele_rentes_op' });
-// ========================================================================
-
-// ========================================================================
-// FASE 1: Validatie en logging voor opzet_hypotheek_starter
-// ========================================================================
-const logger = createLogger(args.session_id);
-try {
-  // Valideer base arguments
-  validateBaseArguments({
-    inkomen_aanvrager: args.inkomen_aanvrager,
-    geboortedatum_aanvrager: args.geboortedatum_aanvrager,
-    heeft_partner: args.heeft_partner,
-    inkomen_partner: args.inkomen_partner,
-    geboortedatum_partner: args.geboortedatum_partner,
-    verplichtingen_pm: args.verplichtingen_pm
-  } as any);
-  logger.info('Validation passed', { 
-    tool: 'opzet_hypotheek_starter',
-    woningwaarde: args.nieuwe_woning?.waarde_woning,
-    heeft_verbouwing: !!args.nieuwe_woning?.bedrag_verbouwen
-  });
-} catch (validationError) {
-  if (validationError instanceof ValidationError) {
-    logger.error('Validation failed - blocking execution', validationError);
-    return {
-      content: [{
-        type: "text",
-        text: JSON.stringify({
-          error: "Validatiefout",
-          message: validationError.message,
-          field: (validationError as any).field,
-          details: validationError.toStructured(args.session_id),
-          help: "Controleer of alle verplichte velden correct zijn ingevuld"
-        }, null, 2)
-      }],
-      isError: true,
-    };
-  } else {
-    logger.warn('Unexpected validation error', { error: String(validationError) });
-  }
-}
-// ========================================================================
-
-// Transform naar API format
-      const apiPayload: any = {
-        aanvrager: {
-          inkomen_aanvrager: args.inkomen_aanvrager,
-          geboortedatum_aanvrager: args.geboortedatum_aanvrager,
-          heeft_partner: args.heeft_partner,
-          inkomen_partner: args.inkomen_partner || 0,
-          geboortedatum_partner: args.geboortedatum_partner || null,
-          verplichtingen_pm: args.verplichtingen_pm || 0,
-          eigen_vermogen: args.eigen_vermogen || 0,
-        },
-        nieuwe_woning: {
-          waarde_woning: args.nieuwe_woning.waarde_woning,
-          bedrag_verbouwen: args.nieuwe_woning.bedrag_verbouwen || 0,
-          bedrag_verduurzamen: args.nieuwe_woning.bedrag_verduurzamen || 0,
-          kosten_percentage: args.nieuwe_woning.kosten_percentage || 0.05,
-          energielabel: normalizeEnergielabel(args.nieuwe_woning.energielabel || ''),
-        },
-      };
-
-      // Voeg session_id toe indien aanwezig
-      if (args.session_id) {
-        apiPayload.session_id = args.session_id;
-      }
-
-      // Rate limit enforcement
-      enforceRateLimit(args.session_id);
-
-      const apiClient = getApiClient();
-      try {
-        const apiResponse = await apiClient.post(REPLIT_API_URL_OPZET, apiPayload, { correlationId: args.session_id });
-        const data = apiResponse.data;
-
-        return {
-          content: [
-            {
-              type: "text",
-              text: formatResponse(data, "opzet_hypotheek_starter"),
-            },
-          ],
-        };
-      } catch (err) {
-        throw err;
-      }
-    } catch (error) {
-      const sessionId = request.params.arguments && (request.params.arguments as any).session_id;
-      if (error instanceof ValidationError) {
-        return {
-          content: [{ type: 'text', text: JSON.stringify(error.toStructured(sessionId), null, 2) }],
-          isError: true,
-        };
-      }
-      if (error instanceof APIError) {
-        return {
-          content: [{ type: 'text', text: JSON.stringify(error.toStructured(sessionId), null, 2) }],
-          isError: true,
-        };
-      }
-      return {
-        content: [{ type: 'text', text: JSON.stringify({ code: ErrorCode.UNKNOWN_ERROR, message: error instanceof Error ? error.message : String(error), correlation_id: sessionId }, null, 2) }],
-        isError: true,
-      };
-    }
-  }
-
-  // Tool 6: Opzet hypotheek - Doorstromer
-  if (request.params.name === "opzet_hypotheek_doorstromer") {
-    try {
-      if (!request.params.arguments) {
-        throw new Error("Arguments are required");
-      }
-
-      const args = request.params.arguments as unknown as OpzetDoorstromerArguments;
-
-      // Normaliseer input voor opzet doorstromer
-      const normalizedArgs = normalizeOpzetDoorstromerArgs(args);
-
-
-// ========================================================================
-// FASE 2: Validatie en logging voor opzet_hypotheek_doorstromer (blocking)
-// ========================================================================
-const logger = createLogger(normalizedArgs.session_id);
-try {
-  validateBaseArguments({
-    inkomen_aanvrager: normalizedArgs.inkomen_aanvrager,
-    geboortedatum_aanvrager: normalizedArgs.geboortedatum_aanvrager,
-    heeft_partner: normalizedArgs.heeft_partner,
-    inkomen_partner: normalizedArgs.inkomen_partner,
-    geboortedatum_partner: normalizedArgs.geboortedatum_partner,
-    verplichtingen_pm: normalizedArgs.verplichtingen_pm
-  } as any);
-  validateBestaandeHypotheek(normalizedArgs.bestaande_hypotheek as any);
-  logger.info('Validation passed', { 
-    tool: 'opzet_hypotheek_doorstromer',
-    woningwaarde_huidig: normalizedArgs.waarde_huidige_woning,
-    woningwaarde_nieuw: normalizedArgs.nieuwe_woning?.waarde_woning
-  });
-} catch (validationError) {
-  if (validationError instanceof ValidationError) {
-    logger.error('Validation failed - blocking execution', validationError);
-    return {
-      content: [{
-        type: "text",
-        text: JSON.stringify({
-          error: "Validatiefout",
-          message: validationError.message,
-          field: (validationError as any).field,
-          details: validationError.toStructured(normalizedArgs.session_id),
-          help: "Controleer of alle verplichte velden correct zijn ingevuld"
-        }, null, 2)
-      }],
-      isError: true,
-    };
-  }
-  throw validationError;
-}
-// ========================================================================
-
-// Transform naar API format
-      const apiPayload: any = {
-        aanvrager: {
-          inkomen_aanvrager: args.inkomen_aanvrager,
-          geboortedatum_aanvrager: args.geboortedatum_aanvrager,
-          heeft_partner: args.heeft_partner,
-          inkomen_partner: args.inkomen_partner || 0,
-          geboortedatum_partner: args.geboortedatum_partner || null,
-          verplichtingen_pm: args.verplichtingen_pm || 0,
-          eigen_vermogen: args.eigen_vermogen || 0,
-        },
-        bestaande_hypotheek: {
-          waarde_huidige_woning: normalizedArgs.waarde_huidige_woning,
-          leningdelen: normalizedArgs.bestaande_hypotheek.leningdelen,
-        },
-        nieuwe_woning: {
-          waarde_woning: normalizedArgs.nieuwe_woning.waarde_woning,
-          bedrag_verbouwen: normalizedArgs.nieuwe_woning.bedrag_verbouwen || 0,
-          bedrag_verduurzamen: normalizedArgs.nieuwe_woning.bedrag_verduurzamen || 0,
-          kosten_percentage: normalizedArgs.nieuwe_woning.kosten_percentage || 0.05,
-          energielabel: normalizeEnergielabel(normalizedArgs.nieuwe_woning.energielabel || ''),
-        },
-      };
-
-      // Voeg session_id toe indien aanwezig
-      if (normalizedArgs.session_id) {
-        apiPayload.session_id = normalizedArgs.session_id;
-      }
-
-      // Rate limit enforcement
-      enforceRateLimit(normalizedArgs.session_id);
-
-      const apiClient = getApiClient();
-      try {
-  const apiResponse = await apiClient.post(REPLIT_API_URL_OPZET, apiPayload, { correlationId: normalizedArgs.session_id });
-        const data = apiResponse.data;
-
-        return {
-          content: [
-            {
-              type: "text",
-              text: formatResponse(data, "opzet_hypotheek_doorstromer"),
-            },
-          ],
-        };
-      } catch (err) {
-        throw err;
-      }
-    } catch (error) {
-      const sessionId = request.params.arguments && (request.params.arguments as any).session_id;
-      if (error instanceof ValidationError) {
-        return {
-          content: [{ type: 'text', text: JSON.stringify(error.toStructured(sessionId), null, 2) }],
-          isError: true,
-        };
-      }
-      if (error instanceof APIError) {
-        return {
-          content: [{ type: 'text', text: JSON.stringify(error.toStructured(sessionId), null, 2) }],
-          isError: true,
-        };
-      }
-      return {
-        content: [{ type: 'text', text: JSON.stringify({ code: ErrorCode.UNKNOWN_ERROR, message: error instanceof Error ? error.message : String(error), correlation_id: sessionId }, null, 2) }],
-        isError: true,
-      };
-    }
-  }
-
-  // Tool 7: Opzet hypotheek - Uitgebreid
-  if (request.params.name === "opzet_hypotheek_uitgebreid") {
-    try {
-      if (!request.params.arguments) {
-        throw new Error("Arguments are required");
-      }
-
-      const args = request.params.arguments as unknown as OpzetUitgebreidArguments;
-
-      // Normalize doorstromer-related fields when present so validation/payloads use canonical keys
-      const normalizedArgs = (args as any).is_doorstromer ? normalizeOpzetDoorstromerArgs(args) : args;
-
-// ========================================================================
-// FASE 2: Validatie en logging voor opzet_hypotheek_uitgebreid (blocking)
-// ========================================================================
-const logger = createLogger((normalizedArgs as any).session_id);
-try {
-  validateBaseArguments({
-    inkomen_aanvrager: (normalizedArgs as any).inkomen_aanvrager,
-    geboortedatum_aanvrager: (normalizedArgs as any).geboortedatum_aanvrager,
-    heeft_partner: (normalizedArgs as any).heeft_partner,
-    inkomen_partner: (normalizedArgs as any).inkomen_partner,
-    geboortedatum_partner: (normalizedArgs as any).geboortedatum_partner,
-    verplichtingen_pm: (normalizedArgs as any).verplichtingen_pm
-  } as any);
-  if ((normalizedArgs as any).is_doorstromer && (normalizedArgs as any).bestaande_hypotheek) {
-    validateBestaandeHypotheek((normalizedArgs as any).bestaande_hypotheek);
-  }
-  logger.info('Validation passed', { 
-    tool: 'opzet_hypotheek_uitgebreid',
-    is_doorstromer: (normalizedArgs as any).is_doorstromer
-  });
-} catch (validationError) {
-  if (validationError instanceof ValidationError) {
-    logger.error('Validation failed - blocking execution', validationError);
-    return {
-      content: [{
-        type: "text",
-        text: JSON.stringify({
-          error: "Validatiefout",
-          message: validationError.message,
-          field: (validationError as any).field,
-          details: validationError.toStructured((normalizedArgs as any).session_id),
-          help: "Controleer of alle verplichte velden correct zijn ingevuld"
-        }, null, 2)
-      }],
-      isError: true,
-    };
-  }
-  throw validationError;
-}
-// ========================================================================
-
-// Transform naar API format
-      const apiPayload: any = {
-        aanvrager: {
-          inkomen_aanvrager: (normalizedArgs as any).inkomen_aanvrager,
-          geboortedatum_aanvrager: (normalizedArgs as any).geboortedatum_aanvrager,
-          heeft_partner: (normalizedArgs as any).heeft_partner,
-          inkomen_partner: (normalizedArgs as any).inkomen_partner || 0,
-          geboortedatum_partner: (normalizedArgs as any).geboortedatum_partner || null,
-          verplichtingen_pm: (normalizedArgs as any).verplichtingen_pm || 0,
-          eigen_vermogen: (normalizedArgs as any).eigen_vermogen || 0,
-        },
-        nieuwe_woning: {
-          waarde_woning: (normalizedArgs as any).nieuwe_woning.waarde_woning,
-          bedrag_verbouwen: (normalizedArgs as any).nieuwe_woning.bedrag_verbouwen || 0,
-          bedrag_verduurzamen: (normalizedArgs as any).nieuwe_woning.bedrag_verduurzamen || 0,
-          kosten_percentage: (normalizedArgs as any).nieuwe_woning.kosten_percentage || 0.05,
-          energielabel: normalizeEnergielabel((normalizedArgs as any).nieuwe_woning.energielabel || ''),
-        },
-      };
-
-      // Voeg bestaande hypotheek toe als doorstromer
-      if ((normalizedArgs as any).is_doorstromer && (normalizedArgs as any).waarde_huidige_woning && (normalizedArgs as any).bestaande_hypotheek) {
-        apiPayload.bestaande_hypotheek = {
-          waarde_huidige_woning: (normalizedArgs as any).waarde_huidige_woning,
-          leningdelen: (normalizedArgs as any).bestaande_hypotheek.leningdelen,
-        };
-      }
-
-      // Voeg session_id toe indien aanwezig
-      if ((normalizedArgs as any).session_id) {
-        apiPayload.session_id = (normalizedArgs as any).session_id;
-      }
-
-      // Voeg nieuwe lening parameters toe
-      if ((normalizedArgs as any).nieuwe_lening) {
-        apiPayload.nieuwe_lening = {
-          looptijd_jaren: (normalizedArgs as any).nieuwe_lening.looptijd_jaren || 30,
-          rentevast_periode_jaren: (normalizedArgs as any).nieuwe_lening.rentevast_periode_jaren || 10,
-          nhg: (normalizedArgs as any).nieuwe_lening.nhg || false,
-        };
-        
-        // Voeg renteklassen toe indien gespecificeerd
-        if ((normalizedArgs as any).nieuwe_lening.renteklassen && (normalizedArgs as any).nieuwe_lening.renteklassen.length > 0) {
-          apiPayload.nieuwe_lening.renteklassen = (normalizedArgs as any).nieuwe_lening.renteklassen;
-        }
-      }
-
-      // Rate limit enforcement
-      enforceRateLimit((normalizedArgs as any).session_id);
-
-      const apiClient = getApiClient();
-      try {
-        const apiResponse = await apiClient.post(REPLIT_API_URL_OPZET, apiPayload, { correlationId: (normalizedArgs as any).session_id });
-        const data = apiResponse.data;
-
-        return {
-          content: [
-            {
-              type: "text",
-              text: formatResponse(data, "opzet_hypotheek_uitgebreid"),
-            },
-          ],
-        };
-      } catch (err) {
-        throw err;
-      }
-    } catch (error) {
-      const sessionId = request.params.arguments && (request.params.arguments as any).session_id;
-      if (error instanceof ValidationError) {
-        return {
-          content: [{ type: 'text', text: JSON.stringify(error.toStructured(sessionId), null, 2) }],
-          isError: true,
-        };
-      }
-      if (error instanceof APIError) {
-        return {
-          content: [{ type: 'text', text: JSON.stringify(error.toStructured(sessionId), null, 2) }],
-          isError: true,
-        };
-      }
-      return {
-        content: [{ type: 'text', text: JSON.stringify({ code: ErrorCode.UNKNOWN_ERROR, message: error instanceof Error ? error.message : String(error), correlation_id: sessionId }, null, 2) }],
-        isError: true,
-      };
-    }
-  }
-
-  throw new Error(`Onbekende tool: ${request.params.name}`);
-  } catch (err) {
-    success = false;
-    if (err instanceof ValidationError) {
-      try { recordValidationError((err as any).code || 'validation_error'); } catch (e) { /* ignore metrics failure */ }
-    }
-    throw err;
-  } finally {
-    const duration = Date.now() - startTime;
-    try { recordToolCall(toolName, duration, success); } catch (e) { /* ignore metrics failure */ }
+    return errorResponse(error, sessionId);
   }
 });
 
@@ -1917,10 +1527,8 @@ try {
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("Hypotheek MCP Server v3.0 draait (stdio mode) met 7 tools!");
-  console.error("Maximale hypotheek: bereken_hypotheek_starter, bereken_hypotheek_doorstromer, bereken_hypotheek_uitgebreid");
-  console.error("Opzet hypotheek: opzet_hypotheek_starter, opzet_hypotheek_doorstromer, opzet_hypotheek_uitgebreid");
-  console.error("Overig: haal_actuele_rentes_op");
+  console.error(`Hypotheek MCP Server v${config.serverVersion} klaar voor gebruik (stdio).`);
+  console.error(`Beschikbare tools: ${Object.keys(TOOL_HANDLERS).join(', ')}`);
 }
 
 main().catch((error) => {

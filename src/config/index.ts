@@ -1,126 +1,89 @@
 /**
- * Centralized Configuration (Fase 1)
- * 
- * Alle configuratie op één plek, met validatie en defaults.
+ * Centralized configuration loader.
  */
+
+import { createRequire } from 'node:module';
+import { z } from 'zod';
 
 import { ValidationError, ErrorCode } from '../types/index.js';
 
-// ==============================================================================
-// CONFIGURATION INTERFACE
-// ==============================================================================
+const require = createRequire(import.meta.url);
+const { version: packageVersion } = require('../../package.json') as { version: string };
 
 export interface ServerConfig {
-  // API Configuration
   replitApiKey: string;
   replitApiUrlBase: string;
   replitApiUrlBerekenen: string;
   replitApiUrlOpzet: string;
   replitApiUrlRentes: string;
-  
-  // Logging
   logLevel: string;
   nodeEnv: string;
-  
-  // API Client Settings (voor Fase 2)
   apiTimeoutMs: number;
   enableRetry: boolean;
   maxRetries: number;
-  
-  // Rate Limiting (voor Fase 2)
   rateLimitPerSession: number;
-  
-  // Server Info
   serverName: string;
   serverVersion: string;
 }
 
-// ==============================================================================
-// CONFIGURATION LOADING
-// ==============================================================================
+const envSchema = z.object({
+  REPLIT_API_KEY: z.string().min(1, 'REPLIT_API_KEY is verplicht'),
+  REPLIT_API_URL_BASE: z.string().url().default('https://digital-mortgage-calculator.replit.app'),
+  LOG_LEVEL: z.string().default('info'),
+  NODE_ENV: z.string().default('development'),
+  API_TIMEOUT_MS: z.coerce.number().min(5000).max(60000).default(30000),
+  ENABLE_RETRY: z.coerce.boolean().default(true),
+  MAX_RETRIES: z.coerce.number().min(0).max(5).default(3),
+  RATE_LIMIT_PER_SESSION: z.coerce.number().min(1).default(100),
+});
 
-/**
- * Load en valideer configuratie uit environment variables
- */
-export function loadConfig(): ServerConfig {
-  // Check verplichte variabelen
-  // Allow tests to run without requiring the real REPLIT_API_KEY.
-  // In production and development we still require the variable, but in
-  // the test environment we provide a harmless default to avoid throwing
-  // during unit tests that instantiate API clients or middleware.
-  let apiKey = process.env.REPLIT_API_KEY;
-  if (!apiKey) {
-    if ((process.env.NODE_ENV || 'development') === 'test') {
-      apiKey = 'test-replit-api-key';
-    } else {
-      throw new ValidationError(
-        ErrorCode.CONFIGURATION_ERROR,
-        'REPLIT_API_KEY environment variabele is niet ingesteld. Zet deze in je .env file.',
-        'REPLIT_API_KEY'
-      );
-    }
-  }
-  
-  // Base URL met default
-  const baseUrl = process.env.REPLIT_API_URL_BASE || 
-    'https://digital-mortgage-calculator.replit.app';
-  
-  // Alle configuratie
-  const config: ServerConfig = {
-    // API
-    replitApiKey: apiKey,
-    replitApiUrlBase: baseUrl,
-    replitApiUrlBerekenen: `${baseUrl}/berekenen/maximaal`,
-    replitApiUrlOpzet: `${baseUrl}/berekenen/opzet-hypotheek`,
-    replitApiUrlRentes: `${baseUrl}/rentes`,
-    
-    // Logging
-    logLevel: process.env.LOG_LEVEL || 'info',
-    nodeEnv: process.env.NODE_ENV || 'development',
-    
-    // API Client (defaults voor Fase 1)
-    apiTimeoutMs: parseInt(process.env.API_TIMEOUT_MS || '30000', 10),
-    enableRetry: process.env.ENABLE_RETRY !== 'false', // Default: true
-    maxRetries: parseInt(process.env.MAX_RETRIES || '3', 10),
-    
-    // Rate Limiting (defaults voor Fase 2)
-    rateLimitPerSession: parseInt(process.env.RATE_LIMIT_PER_SESSION || '100', 10),
-    
-    // Server Info
-    serverName: 'hypotheek-berekening-server',
-    serverVersion: '4.2.0'
+function parseEnv(): z.infer<typeof envSchema> {
+  const raw = {
+    REPLIT_API_KEY: process.env.REPLIT_API_KEY ?? ((process.env.NODE_ENV || 'development') === 'test' ? 'test-replit-api-key' : undefined),
+    REPLIT_API_URL_BASE: process.env.REPLIT_API_URL_BASE,
+    LOG_LEVEL: process.env.LOG_LEVEL,
+    NODE_ENV: process.env.NODE_ENV,
+    API_TIMEOUT_MS: process.env.API_TIMEOUT_MS,
+    ENABLE_RETRY: process.env.ENABLE_RETRY,
+    MAX_RETRIES: process.env.MAX_RETRIES,
+    RATE_LIMIT_PER_SESSION: process.env.RATE_LIMIT_PER_SESSION,
   };
-  
-  // Valideer numerieke waarden
-  if (config.apiTimeoutMs < 5000 || config.apiTimeoutMs > 60000) {
-    throw new ValidationError(
-      ErrorCode.CONFIGURATION_ERROR,
-      'API_TIMEOUT_MS moet tussen 5000 en 60000 zijn',
-      'API_TIMEOUT_MS',
-      config.apiTimeoutMs
-    );
+
+  try {
+    return envSchema.parse(raw);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      const issue = error.issues[0];
+      const message = issue?.message ?? 'Ongeldige configuratie';
+      const field = issue?.path?.[0] ? String(issue.path[0]) : undefined;
+      throw new ValidationError(ErrorCode.CONFIGURATION_ERROR, message, field);
+    }
+    throw error;
   }
-  
-  if (config.maxRetries < 0 || config.maxRetries > 5) {
-    throw new ValidationError(
-      ErrorCode.CONFIGURATION_ERROR,
-      'MAX_RETRIES moet tussen 0 en 5 zijn',
-      'MAX_RETRIES',
-      config.maxRetries
-    );
-  }
-  
-  return config;
 }
 
-/**
- * Global config instance
- */
+export function loadConfig(): ServerConfig {
+  const env = parseEnv();
+
+  return {
+    replitApiKey: env.REPLIT_API_KEY,
+    replitApiUrlBase: env.REPLIT_API_URL_BASE,
+    replitApiUrlBerekenen: `${env.REPLIT_API_URL_BASE}/berekenen/maximaal`,
+    replitApiUrlOpzet: `${env.REPLIT_API_URL_BASE}/berekenen/opzet-hypotheek`,
+    replitApiUrlRentes: `${env.REPLIT_API_URL_BASE}/rentes`,
+    logLevel: env.LOG_LEVEL,
+    nodeEnv: env.NODE_ENV,
+    apiTimeoutMs: env.API_TIMEOUT_MS,
+    enableRetry: env.ENABLE_RETRY,
+    maxRetries: env.MAX_RETRIES,
+    rateLimitPerSession: env.RATE_LIMIT_PER_SESSION,
+    serverName: 'hypotheek-berekening-server',
+    serverVersion: packageVersion,
+  };
+}
+
 let configInstance: ServerConfig | null = null;
 
-/**
- * Get config (singleton pattern)
- */
 export function getConfig(): ServerConfig {
   if (!configInstance) {
     configInstance = loadConfig();
@@ -128,9 +91,6 @@ export function getConfig(): ServerConfig {
   return configInstance;
 }
 
-/**
- * Reset config (voor testing)
- */
 export function resetConfig(): void {
   configInstance = null;
 }

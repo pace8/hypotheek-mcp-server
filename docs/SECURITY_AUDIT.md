@@ -1,7 +1,7 @@
 # Security Audit Report - Hypotheek MCP Server v4.0
 
 **Datum:** 2025-11-03  
-**Versie:** 4.0.0  
+**Versie:** 5.0.0  
 **Auditor:** Automated + Manual Review  
 **Framework:** OWASP ASVS 4.0 (Application Security Verification Standard)  
 **Scope:** Complete MCP server codebase

@@ -411,149 +411,11 @@ function hashContent(content: string): string {
 }
 
 function buildOpzetIntakeGuide(): string {
-  return `# Opzet Hypotheek Intake Guide
-
-## Basisvelden (altijd vragen)
-- \`inkomen_aanvrager\`: bruto jaarinkomen hoofdaanvrager (EUR)
-- \`geboortedatum_aanvrager\`: YYYY-MM-DD (reken leeftijd desnoods om)
-- \`heeft_partner\`: true/false
-- \`inkomen_partner\` & \`geboortedatum_partner\`: alleen invullen bij een meedoen­de partner
-- \`verplichtingen_pm\`: maandelijkse verplichtingen (default 0)
-
-## Optioneel maar vaak handig
-- \`eigen_vermogen\`: beschikbaar spaargeld/gift (default 0)
-- \`session_id\`: doorgeven vanuit n8n voor logging en rate limiting
-
-## Nieuwe woning
-- \`nieuwe_woning.waarde_woning\` (verplicht)
-- \`bedrag_verbouwen\`, \`bedrag_verduurzamen\`: defaults 0
-- \`kosten_percentage\`: default 0.05 (5%)
-- \`energielabel\`: exacte string uit de lijst (optioneel)
-
-## Doorstromer-specifiek
-- \`waarde_huidige_woning\`: marktwaarde huidige woning
-- \`bestaande_hypotheek.leningdelen[]\` met:
-  - \`huidige_schuld\`, \`huidige_rente\` (decimaal), \`resterende_looptijd_in_maanden\`, \`rentevasteperiode_maanden\`, \`hypotheekvorm\`
-
-## Maatwerk (tool \`opzet_hypotheek_uitgebreid\`)
-- \`is_doorstromer\`: true/false voor routing
-- \`nieuwe_lening.looptijd_jaren\`, \`rentevast_periode_jaren\`, \`nhg\` (defaults 30 / 10 / false)
-- \`nieuwe_lening.renteklassen[]\`: optioneel voor custom rentetabellen
-- \`nieuwe_hypotheek\`: vrije container voor aanvullende velden of aanbiederspecifieke info
-
-## Aanpak in het gesprek
-1. Verzamel basisintake + scenario (starter vs doorstromer).
-2. Raadpleeg deze guide om ontbrekende velden in te vullen of defaults te bevestigen.
-3. Gebruik de juiste tool:
-   - \`opzet_hypotheek_starter\` voor starters
-   - \`opzet_hypotheek_doorstromer\` voor klanten met verkoop van huidige woning
-   - \`opzet_hypotheek_uitgebreid\` voor maatwerkparameters
-4. Bevestig naar de klant welke aannames en defaults zijn gebruikt.
-`;
+  return readFileRelative('docs/OPZET_INTAKE.md');
 }
 
 function buildOutputFormattingGuide(): string {
-  return `# Output Formatting Guide
-
-## Doel
-Deze guide helpt AI agents om de output van hypotheek berekeningen op de juiste manier te presenteren aan eindgebruikers.
-
-## Belangrijkste Principe
-**De MCP tools geven al perfect geformatteerde output. Toon deze VOLLEDIG.**
-
-## Voor Opzet Hypotheek Tools
-
-### ✅ GOED: Volledige Output Tonen
-
-\`\`\`
-Gebruiker: "Kan ik die woning van €400.000 kopen?"
-
-Agent: "Ik heb een complete opzet gemaakt op basis van uw situatie. Hier is het overzicht:
-
-🏠 **OPZET HYPOTHEEK - DOORSTROMER**
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📊 **TOTAAL BENODIGD BEDRAG**
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-[... volledige tool output ...]
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-💡 **PRAKTISCHE TOELICHTING**
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-✓ U heeft een substantiële overwaarde van €240.000
-[...]
-
-**Mijn aanbeveling:** Op basis van deze cijfers is de woning haalbaar. 
-Wel raad ik aan om €20.000 van uw overwaarde als buffer aan te houden. 
-Wat vindt u van dit plan?"
-\`\`\`
-
-### ❌ FOUT: Output Samenvatten
-
-\`\`\`
-Agent: "Ja, u kunt deze woning kopen. U heeft €240.000 overwaarde 
-en de maandlast wordt €2.000."
-\`\`\`
-
-**Waarom fout:**
-- Mist cruciale details (breakdown, balans check)
-- Geen context over bestaande vs nieuwe hypotheek
-- Praktische tips worden niet getoond
-
-## Voor Maximale Hypotheek Tools
-
-### ✅ GOED: Compleet Overzicht
-
-\`\`\`
-Agent: "Op basis van uw inkomen en situatie kunt u:
-
-🏠 **HYPOTHEEKBEREKENING VOOR STARTER**
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📊 **Met NHG**
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-[... volledige tool output ...]
-
-Let op: Het verschil tussen met en zonder NHG is €10.000. 
-NHG geeft u ook extra zekerheid. Wilt u meer weten over de voorwaarden?"
-\`\`\`
-
-## Vervolgvragen
-
-Na het tonen van de output, gebruik de informatie erin voor vervolgvragen:
-
-**Voorbeelden:**
-- "Ik zie dat uw maandlast met €500 stijgt. Past dit binnen uw maandbudget?"
-- "De praktische toelichting suggereert verduurzaming. Heeft u daar interesse in?"
-- "Er is een balans check: alles klopt. Wilt u de volgende stap zetten?"
-
-## Sectie-Referenties
-
-Verwijs naar specifieke secties bij vervolgvragen:
-
-\`\`\`
-"Zoals u in de sectie 'Maandlasten' ziet, komt uw nieuwe maandlast op €2.000. 
-Dit is een stijging van €500 ten opzichte van uw huidige situatie..."
-\`\`\`
-
-## Samenvattingen
-
-Als de gebruiker vraagt om een samenvatting:
-
-\`\`\`
-Agent: "Samengevat:
-- Totaal benodigd: €460.000
-- U financiert dit met: bestaande hypotheek (€150K), nieuwe hypotheek (€50K), 
-  overwaarde (€240K) en eigen geld (€20K)
-- Nieuwe maandlast: €2.000 (+€1.000 stijging)
-- Advies: Reserveer buffer van €20.000
-
-Voor de volledige details, zie hierboven het complete overzicht."
-\`\`\`
-`;
+  return readFileRelative('docs/OUTPUT_FORMATTING.md');
 }
 
 
@@ -613,10 +475,6 @@ ${mistakes}
 ## Error code quick reference
 
 ${errorLines}${outputGuidance}
-
-## Verdere resources
-- Intake details & defaults: hypotheek://v4/guide/opzet-intake
-- Output formatting leidraad: hypotheek://v4/guide/output-formatting
 `;
 }
 
