@@ -698,22 +698,20 @@ Financiering:
 ```json
 {
   "error": "Validatiefout",
-  "code": "AGE_OUT_OF_RANGE",
-  "message": "Aanvrager moet tussen 18 en 75 jaar oud zijn (nu: 16 jaar)",
+  "code": "INVALID_DATE_FORMAT",
+  "message": "geboortedatum_aanvrager is geen geldige datum",
   "field": "geboortedatum_aanvrager",
-  "suggestion": "Leeftijd moet tussen 18 en 75 jaar zijn"
+  "details": {
+    "value": "2010-02-30"
+  }
 }
 ```
 
 **Agent recovery:**
 
-> "❌ Er is een probleem met de ingevoerde leeftijd.
+> "❌ Er is een probleem met de ingevoerde geboortedatum.
 > 
-> Voor een hypotheek moet u minimaal 18 jaar oud zijn. U gaf op dat u 16 jaar bent.
-> 
-> **Mogelijke oplossingen:**
-> 1. Is uw leeftijd misschien verkeerd ingevuld?
-> 2. Als u inderdaad jonger dan 18 bent, kunt u helaas nog geen hypotheek krijgen
+> De datum 2010-02-30 bestaat niet. Wilt u de juiste geboortedatum doorgeven?"
 > 3. Wellicht kunnen uw ouders een hypotheek nemen met u als toekomstige eigenaar?
 > 
 > Kunt u uw correcte leeftijd doorgeven zodat ik verder kan helpen?"
@@ -724,29 +722,7 @@ Financiering:
 
 ### Veelvoorkomende Errors en Oplossingen
 
-#### 1. AGE_OUT_OF_RANGE
-
-**Error:**
-```json
-{
-  "code": "AGE_OUT_OF_RANGE",
-  "message": "Leeftijd moet tussen 18 en 75 zijn"
-}
-```
-
-**Oorzaak:**
-- Geboortedatum resulteert in leeftijd <18 of >75
-
-**Oplossing:**
-```
-✅ Check berekening: 2025 - geboortejaar = leeftijd
-✅ Vraag om correcte leeftijd
-✅ Leg uit: min 18 jaar voor hypotheek
-```
-
----
-
-#### 2. INCOME_OUT_OF_RANGE
+#### 1. INCOME_OUT_OF_RANGE
 
 **Error:**
 ```json
@@ -770,7 +746,7 @@ Financiering:
 
 ---
 
-#### 3. INVALID_DATE_FORMAT
+#### 2. INVALID_DATE_FORMAT
 
 **Error:**
 ```json

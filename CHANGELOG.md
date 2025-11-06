@@ -72,7 +72,7 @@ Deze release bevat een **volledige refactor** met focus op type safety, error ha
 #### Input Validation
 - ✅ **Runtime validation** met Zod schemas
 - ✅ Gedetailleerde error messages met field names
-- ✅ Business rule validation (age 18-75, income ranges, etc.)
+- ✅ Business rule validation (inkomen, woningwaarde, etc.)
 - ✅ Leningdeel validatie (rentevast ≤ looptijd)
 
 #### Structured Logging

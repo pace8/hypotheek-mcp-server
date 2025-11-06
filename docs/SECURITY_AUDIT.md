@@ -137,7 +137,7 @@
 // src/validation/schemas.ts
 export function validateBaseArguments(args: unknown): void {
   // Type checking
-  // Range validation (age 18-75, income 0-1M)
+  // Range validation (inkomen 0-1M, etc.)
   // Date format validation (YYYY-MM-DD)
   // Enum validation (hypotheekvorm, energielabel)
 }

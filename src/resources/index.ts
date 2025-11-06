@@ -54,17 +54,6 @@ export const ERROR_GUIDE: Record<ErrorCode, ErrorGuideEntry> = {
     badExample: '"15-05-1990"',
     goodExample: '"1990-05-15"'
   },
-  [ErrorCode.AGE_OUT_OF_RANGE]: {
-    title: 'Leeftijd buiten toegestane bandbreedte',
-    typicalCause: 'De berekende leeftijd is jonger dan 18 of ouder dan 75 jaar op het moment van aanvragen.',
-    resolutionSteps: [
-      'Controleer of de geboortedatum correct is omgerekend vanuit de opgegeven leeftijd.',
-      'Vraag of de gebruiker zeker weet dat hij/zij voldoet aan de leeftijdseisen van de kredietverstrekker.',
-      'Indien foutief omgezet: bereken opnieuw met een geboortedatum waarbij de gebruiker morgen jarig is.'
-    ],
-    badExample: '"2010-01-01" (15 jaar)',
-    goodExample: '"1990-05-15" (35 jaar)'
-  },
   [ErrorCode.INCOME_OUT_OF_RANGE]: {
     title: 'Inkomen buiten bandbreedte',
     typicalCause: 'Bruto jaarinkomen is negatief, onrealistisch hoog of ingevoerd in honderden i.p.v. euro’s.',
