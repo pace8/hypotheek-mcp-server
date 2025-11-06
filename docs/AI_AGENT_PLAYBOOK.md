@@ -157,7 +157,7 @@ Twee scenario's:
 > - Maandlast: ongeveer €825
 > - Hogere rente (ca. 3.8%)
 > 
-> NHG is beschikbaar voor woningen tot €435.000 en geeft u extra zekerheid plus lagere rente."
+> NHG biedt extra zekerheid en vaak lagere rente. Check altijd de actuele grens bij de berekening."
 
 ---
 
@@ -184,14 +184,14 @@ Twee scenario's:
 
 **Verwachte output:**
 
-- **Met NHG**: €430.000 - €435.000 (NHG limiet!)
+- **Met NHG**: €430.000 - grens van toepassing op dit scenario
 - **Zonder NHG**: €380.000 - €400.000
 
 **Agent response:**
 
 > "Samen kunt u maximaal lenen:
 > 
-> 💰 **Met NHG:** tot €435.000 (maximale NHG grens)
+> 💰 **Met NHG:** tot het maximale NHG-bedrag volgens de actuele berekening
 > - Gecombineerd inkomen: €103.000
 > - Maandlast: ongeveer €2.000
 > - Rente: ca. 3.4%
@@ -200,7 +200,7 @@ Twee scenario's:
 > - Maandlast: ongeveer €1.900
 > - Rente: ca. 3.7%
 > 
-> **Let op:** Met NHG zit u tegen de limiet aan (€435.000), dus u kunt zoeken naar woningen tot maximaal €415.000 (rekening houdend met kosten koper ~5%)."
+> **Let op:** Met NHG zit u tegen de actuele limiet aan; bespreek hoe kosten koper en buffers dit beïnvloeden."
 
 ---
 

@@ -266,7 +266,7 @@ const STARTER_CASES = [
   {
     title: 'Starter met partner',
     context: 'Combinatie-inkomen €103.000, NHG tegen limiet aan.',
-    highlight: 'Informeer over NHG-grens (€435.000) en kosten koper buffer.'
+    highlight: 'Check NHG-geschiktheid en bespreek kosten koper buffer.'
   },
   {
     title: 'Starter met verduurzamingsbudget',
