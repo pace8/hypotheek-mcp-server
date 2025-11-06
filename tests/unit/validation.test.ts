@@ -53,64 +53,26 @@ describe('BaseArguments Validation', () => {
   });
   
   describe('Edge Cases - Age', () => {
-    it('should reject age under 18', () => {
+    it('should accept young applicants (age checks delegated to API)', () => {
       const input = {
         inkomen_aanvrager: 30000,
-        geboortedatum_aanvrager: '2010-01-01', // ~15 years old
+        geboortedatum_aanvrager: '2010-01-01',
         heeft_partner: false,
-        verplichtingen_pm: 0
+        verplichtingen_pm: 0,
       };
-      
-      expect(() => validateBaseArguments(input)).toThrow(ValidationError);
-      
-      try {
-        validateBaseArguments(input);
-      } catch (error) {
-        expect((error as ValidationError).code).toBe(ErrorCode.AGE_OUT_OF_RANGE);
-        expect((error as ValidationError).field).toContain('aanvrager');
-      }
-    });
-    
-    it('should accept age exactly 18', () => {
-      // Bereken datum voor iemand die nu precies 18 is
-      const today = new Date();
-      const birthDate = new Date(today.getFullYear() - 18, today.getMonth(), today.getDate());
-      const birthDateStr = birthDate.toISOString().split('T')[0];
-      
-      const input = {
-        inkomen_aanvrager: 30000,
-        geboortedatum_aanvrager: birthDateStr,
-        heeft_partner: false,
-        verplichtingen_pm: 0
-      };
-      
+
       expect(() => validateBaseArguments(input)).not.toThrow();
     });
-    
-    it('should accept age exactly 75', () => {
-      const today = new Date();
-      const birthDate = new Date(today.getFullYear() - 75, today.getMonth(), today.getDate());
-      const birthDateStr = birthDate.toISOString().split('T')[0];
-      
+
+    it('should accept senior applicants (age checks delegated to API)', () => {
       const input = {
         inkomen_aanvrager: 50000,
-        geboortedatum_aanvrager: birthDateStr,
+        geboortedatum_aanvrager: '1940-01-01',
         heeft_partner: false,
-        verplichtingen_pm: 0
+        verplichtingen_pm: 0,
       };
-      
+
       expect(() => validateBaseArguments(input)).not.toThrow();
-    });
-    
-    it('should reject age over 75', () => {
-      const input = {
-        inkomen_aanvrager: 50000,
-        geboortedatum_aanvrager: '1940-01-01', // ~85 years old
-        heeft_partner: false,
-        verplichtingen_pm: 0
-      };
-      
-      expect(() => validateBaseArguments(input)).toThrow(ValidationError);
     });
   });
   

@@ -81,10 +81,6 @@ export const ValidationConstraints = {
     MIN: 0,
     MAX: 1_000_000,
   },
-  LEEFTIJD: {
-    MIN: 18,
-    MAX: 75,
-  },
   WONING_WAARDE: {
     MIN: 50_000,
     MAX: 5_000_000,
@@ -168,8 +164,6 @@ export class ValidationError extends Error {
     switch (this.code) {
       case ErrorCode.INVALID_DATE_FORMAT:
         return 'Gebruik formaat YYYY-MM-DD (bijvoorbeeld: 1990-05-15)';
-      case ErrorCode.AGE_OUT_OF_RANGE:
-        return `Leeftijd moet tussen ${ValidationConstraints.LEEFTIJD.MIN} en ${ValidationConstraints.LEEFTIJD.MAX} jaar zijn`;
       case ErrorCode.INCOME_OUT_OF_RANGE:
         return `Inkomen moet tussen €${ValidationConstraints.INKOMEN.MIN} en €${ValidationConstraints.INKOMEN.MAX} zijn`;
       default:

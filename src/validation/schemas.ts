@@ -74,13 +74,12 @@ export function validateAge(birthDate: string, field: string): void {
       birthDate
     );
   }
-  
-  // Check leeftijd
-  const age = calculateAge(birthDate);
-  if (age < ValidationConstraints.LEEFTIJD.MIN || age > ValidationConstraints.LEEFTIJD.MAX) {
+
+  const normalized = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
+  if (normalized !== birthDate) {
     throw new ValidationError(
-      ErrorCode.AGE_OUT_OF_RANGE,
-      `${field} moet tussen ${ValidationConstraints.LEEFTIJD.MIN} en ${ValidationConstraints.LEEFTIJD.MAX} jaar oud zijn (nu: ${age} jaar)`,
+      ErrorCode.INVALID_DATE_FORMAT,
+      `${field} is geen geldige datum`,
       `geboortedatum_${field}`,
       birthDate
     );
