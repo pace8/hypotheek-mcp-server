@@ -896,7 +896,7 @@ ${DOORSTROMER_OUTPUT_GUIDANCE}`,
 **Doorstromer invoerbeleid:**
 - Vraag óók hier: "Wilt u een snelle globale berekening (met een samenvatting van uw hypotheek) of een detailberekening waarbij u alle leningdelen invoert?"
 - Snelle route → één samenvattend leningdeel (totale schuld, gemiddelde rente/looptijd, optionele maandlast).
-- Detailroute → volledige lijst leningdelen met de exacte waarden per deel. Kopieer deze rechtstreeks in de leningdelen array.`
+- Detailroute → volledige lijst leningdelen met de exacte waarden per deel. Kopieer deze rechtstreeks in de leningdelen array.`,
         inputSchema: {
           type: "object",
           properties: {
