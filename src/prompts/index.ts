@@ -101,19 +101,33 @@ ${typeDirective}
 ${toneHint}${contextAddendum}
 
 Checklijst:
-1. Vraag ontbrekende kernvelden uit (inkomen, geboortedata, woningwaarde, verplichtingen, energielabel).
+1. Vraag ontbrekende kernvelden uit (inkomen, stel: "Wat is uw leeftijd of geboortedatum?", woningwaarde, verplichtingen, energielabel).
 2. Gebruik de Opzet Intake guide voor detaildefinities en defaults, zeker bij doorstromers.
 3. Herhaal kritieke formatregels (rente als decimaal, looptijden in maanden).
 4. Beantwoord de vraag van ${aanspreking} en stel een logisch vervolgstap voor.
 
+Leeftijd/geboortedatum-regel:
+- Als ${aanspreking} een leeftijd noemt, reken die stilletjes om naar een geboortedatum in ISO-formaat voor toolcalls.
+- Benoem in je reactie alleen de leeftijd die ${aanspreking} noemde en noem nooit de afgeleide geboortedatum tenzij ${aanspreking} die zelf gaf.
+
 Verwijs expliciet naar de Quick Reference en de Opzet Intake guide wanneer de gebruiker veel cijfers moet invullen.`;
+
+      const doorstromerGuidance = `
+
+Doorstromer-instructie:
+- Wanneer de gebruiker een bestaande woning en hypotheek heeft: vraag expliciet "Wilt u een snelle globale berekening (met een samenvatting van uw hypotheek) of een detailberekening waarbij u alle leningdelen invoert?".
+- Snelle globale berekening → noteer één leningdeel met totaal schuld, gemiddelde rente en resterende looptijd (optioneel huidige maandlast).
+- Detailberekening → laat de gebruiker alle leningdelen kopiëren, inclusief hypotheekvorm, rente en resterende looptijd.
+- Presenteer de uitkomst later als één blok met "Uw woningbudget" + bullets en "Uw nieuwe maandlast" en gebruik uitsluitend MCP-velden (max_woningbudget, overwaarde_bedrag, huidige_hypotheek_schuld, extra_leencapaciteit, maandlast_nu, maandlast_straks, verschil_maandlast). Dit geldt zowel voor \`bereken_hypotheek_doorstromer\` als voor \`bereken_hypotheek_uitgebreid\` als je daarmee een doorstromer bedient.`;
+
+      const intakeInstructions = `${introText}${doorstromerGuidance}`;
 
       return [
         {
           role: 'assistant',
           content: {
             type: 'text',
-            text: introText,
+            text: intakeInstructions,
           },
         },
         createResourceLinkMessage('hypotheek://v4/guide/opzet-intake'),

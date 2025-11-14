@@ -2,10 +2,11 @@
 
 ## Basisvelden (altijd vragen)
 - `inkomen_aanvrager`: bruto jaarinkomen hoofdaanvrager (EUR)
-- `geboortedatum_aanvrager`: YYYY-MM-DD (reken leeftijd desnoods om)
+- `geboortedatum_aanvrager`: interne ISO-datum. Vraag altijd: "Wat is uw leeftijd of geboortedatum?" en reken een opgegeven leeftijd zelf om.
 - `heeft_partner`: true/false
-- `inkomen_partner` & `geboortedatum_partner`: alleen invullen bij een meedoende partner
+- `inkomen_partner` & `geboortedatum_partner`: alleen invullen bij een meedoende partner (zelfde leeftijd/geboortedatum-vraag; afgeleide datum blijft intern)
 - `verplichtingen_pm`: maandelijkse verplichtingen (default 0)
+- **Doorstromer keuzevraag (voor zowel `bereken_hypotheek_doorstromer`, `bereken_hypotheek_uitgebreid` met doorstromer-invoer als alle opzet-doorstromer tools):** vraag altijd: _"Wilt u een snelle globale berekening (met een samenvatting van uw hypotheek) of een detailberekening waarbij u alle leningdelen invoert?"_. Vul bij de globale route één samenvattend leningdeel, en bij de detailroute alle losse leningdelen.
 
 ## Optioneel maar vaak nuttig
 - `eigen_vermogen`: beschikbaar spaargeld/gift (default 0)

@@ -51,7 +51,7 @@ Deze playbook is geschreven voor AI agents die de Hypotheek MCP Server gebruiken
 Voor ALLE berekeningen altijd vragen:
 
 1. ✅ **Inkomen** - Bruto jaarinkomen (aanvrager + evt. partner)
-2. ✅ **Leeftijd** - Reken om naar geboortedatum in YYYY-MM-DD formaat
+2. ✅ **Leeftijd of geboortedatum** - Vraag letterlijk: "Wat is uw leeftijd of geboortedatum?" en reken een opgegeven leeftijd intern om naar een ISO-geboortedatum zonder dat terug te koppelen.
 3. ✅ **Partner** - Heeft aanvrager een partner die mee aanvraagt?
 4. ✅ **Verplichtingen** - Andere leningen/alimentatie per maand
 
@@ -65,6 +65,49 @@ Voor OPZET berekeningen ook:
 7. ✅ **Nieuwe woningprijs** - Koopsom
 8. ✅ **Eigen geld** - Spaargeld/schenking
 9. ✅ **Verbouwing** - Kosten voor verbouwing/verduurzaming (optioneel)
+
+#### Leeftijd/geboortedatum beleid
+- Gebruik altijd de vraag: **"Wat is uw leeftijd of geboortedatum?"**
+- Als de gebruiker een leeftijd geeft: bereken intern de geboortedatum (benadering) en gebruik uitsluitend de genoemde leeftijd in uw antwoord.
+- Als de gebruiker een geboortedatum geeft: gebruik deze direct voor MCP-berekeningen en benoem leeftijd én datum alleen wanneer dat logisch is.
+- Vraag nooit alsnog naar een geboortedatum in een specifiek formaat als de gebruiker al een leeftijd heeft gegeven.
+- Deel de intern afgeleide geboortedatum nooit met de gebruiker en noem geen technische datumformaten tenzij een onmogelijke datum verduidelijkt moet worden.
+
+#### Doorstromer intakekeuze
+- Vraag iedere doorstromer expliciet: **"Wilt u een snelle globale berekening (met een samenvatting van uw hypotheek) of een detailberekening waarbij u alle leningdelen invoert?"**
+- **Snelle globale berekening:** u noteert één leningdeel met de totale resterende schuld, gemiddelde rente en resterende looptijd (optioneel aangevuld met de huidige maandlast). Vermeld in uw toelichting dat het om een snelle indicatie gaat.
+- **Detailberekening:** u voert elk leningdeel afzonderlijk in (hoofdsom/schuld, rente, resterende looptijd, rentevast-periode, hypotheekvorm). Laat de gebruiker gegevens uit het hypotheekoverzicht kopiëren en plakken.
+- Respecteer altijd de keuze van de gebruiker en documenteer in uw antwoord welk invoerpad is gebruikt.
+- Deze keuzevraag geldt voor alle doorstromer-tools: `bereken_hypotheek_doorstromer`, `bereken_hypotheek_uitgebreid` (met doorstromer parameters), `opzet_hypotheek_doorstromer` en `opzet_hypotheek_uitgebreid` wanneer u daar een doorstromer mee bedient.
+
+#### Doorstromer outputvelden & presentatie
+- Doorstromer tools (`bereken_hypotheek_doorstromer` of `bereken_hypotheek_uitgebreid` met doorstromer-invoer) leveren o.a. de velden `max_woningbudget`, `overwaarde_bedrag`, `huidige_hypotheek_schuld`, `extra_leencapaciteit`, `maandlast_nu`, `maandlast_straks` en `verschil_maandlast`. Gebruik deze waarden één-op-één; voer zelf geen financiële berekeningen uit.
+- Presenteer de resultaten in één compact overzicht. Houd u aan onderstaande structuur en vervang alleen de bedragen/teksten:
+
+```
+┌─────────────────────────────────────────┐
+│  🎯 Uw woningbudget                     │
+├─────────────────────────────────────────┤
+│  U kunt op zoek naar een woning tot:    │
+│                                         │
+│         € 540.000                       │
+│         ─────────                       │
+│                                         │
+│  💡 Dit bedrag bestaat uit:             │
+│  • Overwaarde huidige woning:  € X      │
+│  • Huidige hypotheekschuld:    € Y      │
+│  • Extra leencapaciteit:       € Z      │
+├─────────────────────────────────────────┤
+│  📊 Uw nieuwe maandlast                 │
+├─────────────────────────────────────────┤
+│  Nu:      € 1.872 / maand               │
+│  Straks:  € 2.114 / maand               │
+│  ───────────────────────                │
+│  Verschil: + € 242 / maand              │
+└─────────────────────────────────────────┘
+```
+
+- Gebruik altijd euro-tekens en duizendtallen (nl-NL). Het verschil is positief (+) of negatief (-) in het blok en wordt nooit opnieuw berekend.
 
 ### Kritieke Formatting Regels
 
@@ -92,7 +135,8 @@ Voor OPZET berekeningen ook:
 | Situatie | Tool | Wanneer |
 |----------|------|---------|
 | Eerste huis kopen, hoeveel kan ik lenen? | `bereken_hypotheek_starter` | Geen bestaande hypotheek |
-| Verhuizen, hoeveel kan ik lenen? | `bereken_hypotheek_doorstromer` | Heeft bestaande woning |
+| Verhuizen, hoeveel kan ik lenen? | `bereken_hypotheek_doorstromer` | Standaard doorstromervraag |
+| Verhuizen + maatwerk rente/looptijd/energielabel | `bereken_hypotheek_uitgebreid` | Doorstromer met extra parameters (zelfde outputregels) |
 | Wil specifieke rente/looptijd/energielabel | `bereken_hypotheek_uitgebreid` | Alleen als expliciet gevraagd |
 | Kan ik deze woning kopen? (starter) | `opzet_hypotheek_starter` | Wil complete financiering zien |
 | Kan ik deze woning kopen? (doorstromer) | `opzet_hypotheek_doorstromer` | Verhuizen naar specifieke woning |
@@ -111,6 +155,7 @@ Voor OPZET berekeningen ook:
 **Stap 1: Informatie verzamelen**
 
 Agent vraagt door:
+- "Wat is uw leeftijd of geboortedatum?"
 - "Heeft u een partner die mee gaat lenen?"
 - "Heeft u andere leningen of verplichtingen?"
 
@@ -124,6 +169,8 @@ Leeftijd: 28
 Morgen jarig: 2025-11-04
 Geboortedatum: 1997-11-04
 ```
+
+> Gebruik deze afgeleide geboortedatum alleen intern; in de terugkoppeling naar de gebruiker verwijst u naar de genoemde leeftijd van 28 jaar.
 
 **Stap 3: Tool call**
 
@@ -214,6 +261,7 @@ Twee scenario's:
 - Leeftijd? → 40 jaar
 - Partner? → Nee
 - Andere verplichtingen? → Nee
+- Vraag: "Wilt u een snelle globale berekening (met een samenvatting van uw hypotheek) of een detailberekening waarbij u alle leningdelen invoert?" → Gebruiker kiest detail en leest de cijfers voor een enkel leningdeel voor.
 
 **Stap 2: Tool call**
 
@@ -248,25 +296,34 @@ Twee scenario's:
 - **Maximale nieuwe hypotheek (zonder NHG)**: €290.000
 - **Nieuwe maandlast**: ~€1.450
 
-**Agent response:**
+**Agent response (met waarden rechtstreeks uit de MCP):**
 
-> "Uw verhuis mogelijkheden:
-> 
-> 🏠 **Huidige situatie:**
-> - Woningwaarde: €350.000
-> - Restschuld: €180.000
-> - **Overwaarde: €170.000**
-> 
-> 💰 **Nieuwe hypotheek:**
-> - Met NHG: tot €310.000
-> - Zonder NHG: tot €290.000
-> - Nieuwe maandlast: ongeveer €1.450
-> 
-> 🎯 **Koopkracht:**
-> Met uw overwaarde van €170.000 kunt u een woning kopen tot:
-> - **€480.000** (nieuwe hypotheek €310K + overwaarde €170K)
-> 
-> Of u kunt de overwaarde gebruiken als buffer en een lagere hypotheek nemen."
+```
+┌─────────────────────────────────────────┐
+│  🎯 Uw woningbudget                     │
+├─────────────────────────────────────────┤
+│  U kunt op zoek naar een woning tot:    │
+│                                         │
+│         € 480.000                       │
+│         ─────────                       │
+│                                         │
+│  💡 Dit bedrag bestaat uit:             │
+│  • Overwaarde huidige woning:  € 170.000│
+│  • Huidige hypotheekschuld:    € 180.000│
+│  • Extra leencapaciteit:       € 310.000│
+├─────────────────────────────────────────┤
+│  📊 Uw nieuwe maandlast                 │
+├─────────────────────────────────────────┤
+│  Nu:      € 1.450 / maand               │
+│  Straks:  € 1.720 / maand               │
+│  ───────────────────────                │
+│  Verschil: + € 270 / maand              │
+└─────────────────────────────────────────┘
+```
+
+> *Toelichting aan gebruiker:* "Dit overzicht is puur gebaseerd op de bedragen uit de berekening. Wilt u deze cijfers met een adviseur finetunen of een snellere globale berekening laten maken? Laat het gerust weten."
+
+> *Let op voor agents:* gebruikt u `bereken_hypotheek_uitgebreid` omdat u rente/looptijd/energielabel handmatig opgeeft? Dan blijft deze identieke blokpresentatie verplicht zodra het om een doorstromer gaat.
 
 ---
 
@@ -711,10 +768,7 @@ Financiering:
 
 > "❌ Er is een probleem met de ingevoerde geboortedatum.
 > 
-> De datum 2010-02-30 bestaat niet. Wilt u de juiste geboortedatum doorgeven?"
-> 3. Wellicht kunnen uw ouders een hypotheek nemen met u als toekomstige eigenaar?
-> 
-> Kunt u uw correcte leeftijd doorgeven zodat ik verder kan helpen?"
+> De datum 2010-02-30 bestaat niet. Wat is uw leeftijd of geboortedatum, zodat ik de berekening kan afronden? Als u alleen uw leeftijd weet, reken ik die intern om."
 
 ---
 
@@ -761,8 +815,9 @@ Financiering:
 
 **Oplossing:**
 ```
-✅ Herformat naar YYYY-MM-DD
-✅ Bijvoorbeeld: 15-05-1990 → 1990-05-15
+✅ Geef aan dat de ontvangen datum ongeldig is en stel opnieuw de vraag: "Wat is uw leeftijd of geboortedatum?"
+✅ Accepteer een leeftijd als antwoord en reken die intern om naar een ISO-geboortedatum zonder dit terug te koppelen.
+✅ Vraag alleen extra verduidelijking als de gebruiker een onmogelijk datumjaar noemt (bijv. toekomstig); noem geen technische formaten.
 ```
 
 ---
@@ -886,6 +941,18 @@ Financiering:
    // ❌ SLECHT
    "Maximale hypotheek: 220000"
    ```
+6. **Vraag leeftijd of geboortedatum op de juiste manier**
+   ```typescript
+   ✅ "Wat is uw leeftijd of geboortedatum?"
+   ✅ "Dank u, met 45 jaar kan ik direct rekenen."
+   ❌ "Mag ik uw geboortedatum in YYYY-MM-DD? U bent 45 jaar dus vermoedelijk 1979-xx-xx."
+   ```
+7. **Gebruik MCP-resultaten letterlijk bij doorstromers (in beide tools)**
+   ```typescript
+   ✅ Toon (in zowel `bereken_hypotheek_doorstromer` als `bereken_hypotheek_uitgebreid`) max_woningbudget, overwaarde_bedrag, maandlast_nu, maandlast_straks zoals de API ze teruggeeft
+   ❌ Zelf max hypotheek = overwaarde + extra_leencapaciteit herberekenen (MCP doet dit al)
+   ✅ Alleen formatteren (euroteken, duizendtallen) is toegestaan
+   ```
 
 ### Don'ts ❌
 
@@ -917,6 +984,11 @@ Financiering:
    ```typescript
    ❌ logger.info("Inkomen: 50000, geboortedatum: 1990-05-15")
    ✅ logger.info("Berekening gestart", { session_id: "..." })
+   ```
+6. **Niet vragen naar beide deurstromer invoerpaden tegelijk**
+   ```typescript
+   ❌ "Geef nu alle leningdelen en ook even een samenvatting"
+   ✅ "Wilt u een snelle globale berekening of een detailberekening met alle leningdelen?"
    ```
 
 ---

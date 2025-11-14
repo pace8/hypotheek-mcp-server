@@ -31,6 +31,7 @@ export interface ErrorGuideEntry {
   goodExample: string;
 }
 
+// Leeftijd/geboortedatum beleid: vraag gebruikers altijd "Wat is uw leeftijd of geboortedatum?", reken een leeftijd intern om naar ISO-formaat en deel die afgeleide datum nooit terug.
 export const ERROR_GUIDE: Record<ErrorCode, ErrorGuideEntry> = {
   [ErrorCode.INVALID_INPUT]: {
     title: 'Algemene invoerfout',
@@ -47,9 +48,9 @@ export const ERROR_GUIDE: Record<ErrorCode, ErrorGuideEntry> = {
     title: 'Onjuist datumformaat',
     typicalCause: 'Datum is aangeleverd in DD-MM-YYYY of natuurlijke taal in plaats van ISO-formaat.',
     resolutionSteps: [
-      'Vraag de gebruiker expliciet om de geboortedatum in het formaat YYYY-MM-DD.',
-      'Herhaal het juiste formaat en geef een bestaand voorbeeld.',
-      'Controleer of de datum geen toekomst ligt en een geldige kalenderdatum is.'
+      'Leg uit dat de ontvangen datum ongeldig is en stel opnieuw de vraag: "Wat is uw leeftijd of geboortedatum?"',
+      'Accepteer een leeftijd als antwoord en reken die intern om naar een ISO-geboortedatum zonder dit te benoemen richting de gebruiker.',
+      'Vraag alleen verduidelijking wanneer een onmogelijk geboortejaar is opgegeven en noem daarbij geen technische datumformaten.'
     ],
     badExample: '"15-05-1990"',
     goodExample: '"1990-05-15"'
@@ -103,7 +104,7 @@ export const ERROR_GUIDE: Record<ErrorCode, ErrorGuideEntry> = {
     typicalCause: 'heeft_partner staat op true maar inkomen of geboortedatum van partner ontbreekt.',
     resolutionSteps: [
       'Vraag expliciet naar het bruto partnerinkomen in euro per jaar.',
-      'Vraag naar geboortedatum partner in YYYY-MM-DD.',
+      'Stel dezelfde vraag voor de partner: "Wat is de leeftijd of geboortedatum van uw partner?" en reken een leeftijd intern om.',
       'Indien geen partner meedoet: zet heeft_partner op false en verwijder partner velden.'
     ],
     badExample: 'heeft_partner: true, inkomen_partner: ontbreekt',
@@ -211,7 +212,7 @@ const TOP_FIVE_MISTAKES: { title: string; fix: string }[] = [
   },
   {
     title: 'Partner aangemeld zonder partnerdata',
-    fix: 'Vraag naar inkomen en geboortedatum partner of zet heeft_partner terug naar false.'
+    fix: 'Vraag naar het partnerinkomen en stel: "Wat is de leeftijd of geboortedatum van uw partner?" zodat je de interne datum kunt invullen, of zet heeft_partner terug naar false.'
   },
   {
     title: 'Leningdelen bevatten onbekende sleutel of verkeerde mapping',
@@ -236,7 +237,7 @@ const FORMAT_RULES: Array<{ parameter: string; format: string; good: string; bad
   },
   {
     parameter: 'Geboortedatum',
-    format: 'YYYY-MM-DD',
+    format: 'Interne ISO (YYYY-MM-DD); vraag de gebruiker altijd: "Wat is uw leeftijd of geboortedatum?"',
     good: '1990-05-15',
     bad: '15-05-1990',
     rationale: 'ISO-formaat voorkomt ambiguïteit en matchingproblemen in validatie.'
@@ -431,6 +432,18 @@ ${formatTableRows}`;
     return `- **${code}** — ${entry.title}: ${entry.typicalCause}`;
   }).join('\n');
 
+  const doorstromerGuidance = `
+## Doorstromer intake & presentatie
+
+- Vraag iedere doorstromer: "Wilt u een snelle globale berekening (met een samenvatting van uw hypotheek) of een detailberekening waarbij u alle leningdelen invoert?"
+- Snelle globale berekening → maak één leningdeel met totale schuld, gemiddelde rente en resterende looptijd (optioneel huidige maandlast).
+- Detailberekening → vul alle leningdelen afzonderlijk in met hoofdsom, rente, resterende looptijd, rentevast-periode en hypotheekvorm.
+- Outputvelden voor doorstromer-tools (\`bereken_hypotheek_doorstromer\` of \`bereken_hypotheek_uitgebreid\` met doorstromer-invoer): max_woningbudget, overwaarde_bedrag, huidige_hypotheek_schuld, extra_leencapaciteit, maandlast_nu, maandlast_straks, verschil_maandlast.
+- Gebruik deze waarden één-op-één; geen eigen herberekeningen behalve formatting.
+- Presenteer resultaten als één blok met "Uw woningbudget" + bullets en een tweede blok "Uw nieuwe maandlast" met maandlast nu/straks/verschil.
+- Pas dezelfde keuzevraag en invulstrategie toe voor \`opzet_hypotheek_doorstromer\` en \`opzet_hypotheek_uitgebreid\` wanneer u daar een doorstromer mee helpt.
+`;
+
   const outputGuidance = `
 
 ## Output Best Practices
@@ -463,7 +476,7 @@ ${mistakes}
 
 ## Error code quick reference
 
-${errorLines}${outputGuidance}
+${errorLines}${doorstromerGuidance}${outputGuidance}
 `;
 }
 
@@ -482,6 +495,10 @@ ${items}`;
 }
 
 function buildDoorstromerExamples(): string {
+  const intakeReminder = `> Vraag iedere doorstromer: "Wilt u een snelle globale berekening (met een samenvatting van uw hypotheek) of een detailberekening waarbij u alle leningdelen invoert?" Vul vervolgens óf één samenvattend leningdeel óf alle leningdelen afzonderlijk in.
+
+> Ongeacht of u \`bereken_hypotheek_doorstromer\` of \`bereken_hypotheek_uitgebreid\` gebruikt: presenteer het resultaat als één blok met "Uw woningbudget" + bullets en "Uw nieuwe maandlast" zoals omschreven in de Quick Start. Gebruik uitsluitend MCP-velden (max_woningbudget, overwaarde_bedrag, huidige_hypotheek_schuld, extra_leencapaciteit, maandlast_nu, maandlast_straks, verschil_maandlast).`;
+
   const items = DOORSTROMER_CASES.map(caseItem => `### ${caseItem.title}
 - **Context:** ${caseItem.context}
 - **Aanpak:** Gebruik \`bereken_hypotheek_doorstromer\` of \`opzet_hypotheek_doorstromer\` afhankelijk van de vraag.
@@ -490,7 +507,9 @@ function buildDoorstromerExamples(): string {
 
   return `# Doorstromercases
 
-Belangrijk: vraag altijd naar huidige woningwaarde én volledige leningdeel informatie.
+Belangrijk: vraag altijd naar huidige woningwaarde én duidelijke invoerkeuze (snelle samenvatting of detail per leningdeel).
+
+${intakeReminder}
 
 ${items}`;
 }
