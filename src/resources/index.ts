@@ -55,6 +55,17 @@ export const ERROR_GUIDE: Record<ErrorCode, ErrorGuideEntry> = {
     badExample: '"15-05-1990"',
     goodExample: '"1990-05-15"'
   },
+  [ErrorCode.AGE_OUT_OF_RANGE]: {
+    title: 'Leeftijd buiten bandbreedte',
+    typicalCause: 'Leeftijd lager dan 18 jaar of ouder dan 75 jaar, of een geboortedatum in de toekomst.',
+    resolutionSteps: [
+      'Leg uit dat hypotheekberekeningen alleen mogelijk zijn tussen 18 en 75 jaar.',
+      'Vraag de gebruiker opnieuw: "Wat is uw leeftijd of geboortedatum?" en controleer of de waarde logisch is.',
+      'Bij fouten door een incorrecte datum (bijv. toekomstig jaar): vraag om bevestiging of correctie zonder zelf een geboortedatum te raden.'
+    ],
+    badExample: '"Ik ben 16 jaar, reken maar met 2009-11-04."',
+    goodExample: '"Ik ben 28 jaar" of "Mijn geboortedatum is 1997-11-04"'
+  },
   [ErrorCode.INCOME_OUT_OF_RANGE]: {
     title: 'Inkomen buiten bandbreedte',
     typicalCause: 'Bruto jaarinkomen is negatief, onrealistisch hoog of ingevoerd in honderden i.p.v. euro’s.',
@@ -556,8 +567,10 @@ function toResourceContents(definition: ResourceDefinition): TextResourceContent
     uri: definition.metadata.uri,
     mimeType: definition.metadata.mimeType,
     text,
-    etag: hashContent(text),
-    version: definition.version
+    _meta: {
+      etag: hashContent(text),
+      version: definition.version
+    }
   };
 }
 
