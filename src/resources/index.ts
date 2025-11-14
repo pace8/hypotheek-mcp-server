@@ -423,12 +423,12 @@ function buildOutputFormattingGuide(): string {
 function buildQuickReference(): string {
   const toolMatrix = `| Situatie | Tool | Reden |
 |----------|------|-------|
-| Starter zonder bestaande hypotheek | \`bereken_hypotheek_starter\` | Simpelste route, levert NHG en non-NHG scenario\'s |
-| Doorstromer met bestaande woning | \`bereken_hypotheek_doorstromer\` | Overwaarde + leningdelen analyseren |
-| Specifieke rente/looptijd gevraagd | \`bereken_hypotheek_uitgebreid\` | Volledige controle over parameters |
-| Starter wil woningtoets | \`opzet_hypotheek_starter\` | Laat financieringsmix en maandlast zien |
-| Doorstromer wil woningtoets | \`opzet_hypotheek_doorstromer\` | Combineert overwaarde, nieuwe woning en leningdelen |
-| Geavanceerde woningtoets | \`opzet_hypotheek_uitgebreid\` | Voor renteklassen of custom looptijd |
+| Oriëntatie zonder woning (starter) | \`bereken_hypotheek_starter\` | Simpelste route, toont NHG en non-NHG scenario\'s |
+| Oriëntatie zonder woning (doorstromer) | \`bereken_hypotheek_doorstromer\` | Overwaarde + extra leencapaciteit zonder concreet huis |
+| Oriëntatie + scenario’s tweaken | \`bereken_hypotheek_uitgebreid\` | Volledige controle over parameters zolang er geen woning is |
+| Concrete woning (starter) | \`opzet_hypotheek_starter\` | Laat financieringsmix en maandlast zien voor specifiek huis |
+| Concrete woning (doorstromer) | \`opzet_hypotheek_doorstromer\` | Combineert overwaarde, nieuwe woning en leningdelen |
+| Concrete woning + maatwerk | \`opzet_hypotheek_uitgebreid\` | Voor renteklassen/custom looptijd/maatwerkleningdelen |
 | Alleen rentestanden nodig | \`haal_actuele_rentes_op\` | Toont actuele top-5 rentes |`;
 
   const formatTableRows = FORMAT_RULES.map(rule => `| ${rule.parameter} | ${rule.format} | ${rule.good} | ${rule.bad} |`).join('\n');
@@ -437,6 +437,19 @@ function buildQuickReference(): string {
 ${formatTableRows}`;
 
   const mistakes = TOP_FIVE_MISTAKES.map((item, index) => `${index + 1}. **${item.title}:** ${item.fix}`).join('\n');
+
+  const decisionTree = `
+## Beslisboom (maximaal vs opzet)
+
+1. Concrete woning/koopprijs?
+   - Ja → kies een \`opzet_hypotheek_*\` tool
+   - Nee → kies een \`bereken_hypotheek_*\` tool
+2. Beschikt gebruiker over huidige woning + hypotheek?
+   - Ja → doorstromer-variant
+   - Nee → starter-variant
+3. Wil gebruiker rentes/looptijden/hypotheekvormen aanpassen?
+   - Ja → kies de \`*_uitgebreid\` variant in het gekozen pad
+   - Nee → kies de standaardvariant`;
 
   const errorLines = QUICK_REF_ERROR_CODES.map(code => {
     const entry = ERROR_GUIDE[code];
@@ -476,6 +489,8 @@ ${formatTableRows}`;
 ## Tool selectie matrix
 
 ${toolMatrix}
+
+${decisionTree}
 
 ## Kritieke format regels
 

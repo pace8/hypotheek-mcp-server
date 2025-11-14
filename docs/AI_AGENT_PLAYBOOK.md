@@ -73,6 +73,17 @@ Voor OPZET berekeningen ook:
 - Vraag nooit alsnog naar een geboortedatum in een specifiek formaat als de gebruiker al een leeftijd heeft gegeven.
 - Deel de intern afgeleide geboortedatum nooit met de gebruiker en noem geen technische datumformaten tenzij een onmogelijke datum verduidelijkt moet worden.
 
+#### Beslisboom toolkeuze
+1. **Is er een concrete woning/koopprijs?**
+   - ✅ Ja → kies ALTIJD een `opzet_hypotheek_*` tool.
+   - ❌ Nee → gebruik een `bereken_hypotheek_*` (maximale hypotheek) tool.
+2. **Is de gebruiker starter of doorstromer?**
+   - Starter = eerste woning, geen bestaande hypotheek.
+   - Doorstromer = heeft nu al een koopwoning + lopende hypotheek.
+3. **Wil de gebruiker scenario’s/parameters tweaken?**
+   - Nee → kies de standaard starter/doorstromer tool binnen het gekozen pad.
+   - Ja → kies de `*_uitgebreid` variant en vraag welke rentes, looptijden of renteklassen moeten worden ingesteld.
+
 #### Doorstromer intakekeuze
 - Vraag iedere doorstromer expliciet: **"Wilt u een snelle globale berekening (met een samenvatting van uw hypotheek) of een detailberekening waarbij u alle leningdelen invoert?"**
 - **Snelle globale berekening:** u noteert één leningdeel met de totale resterende schuld, gemiddelde rente en resterende looptijd (optioneel aangevuld met de huidige maandlast). Vermeld in uw toelichting dat het om een snelle indicatie gaat.
@@ -139,13 +150,12 @@ Voor OPZET berekeningen ook:
 
 | Situatie | Tool | Wanneer |
 |----------|------|---------|
-| Eerste huis kopen, hoeveel kan ik lenen? | `bereken_hypotheek_starter` | Geen bestaande hypotheek |
-| Verhuizen, hoeveel kan ik lenen? | `bereken_hypotheek_doorstromer` | Standaard doorstromervraag |
-| Verhuizen + maatwerk rente/looptijd/energielabel | `bereken_hypotheek_uitgebreid` | Doorstromer met extra parameters (zelfde outputregels) |
-| Wil specifieke rente/looptijd/energielabel | `bereken_hypotheek_uitgebreid` | Alleen als expliciet gevraagd |
-| Kan ik deze woning kopen? (starter) | `opzet_hypotheek_starter` | Wil complete financiering zien |
-| Kan ik deze woning kopen? (doorstromer) | `opzet_hypotheek_doorstromer` | Verhuizen naar specifieke woning |
-| Aangepaste parameters voor opzet | `opzet_hypotheek_uitgebreid` | Alleen als expliciet gevraagd |
+| Geen woning, starter wil oriëntatie | `bereken_hypotheek_starter` | Maximaal leenbedrag zonder concrete koopsom |
+| Geen woning, doorstromer wil oriëntatie | `bereken_hypotheek_doorstromer` | Verhuiswens zonder specifiek huis |
+| Geen woning, wil met parameters spelen | `bereken_hypotheek_uitgebreid` | Oriëntatie + extra variabelen (rente/looptijd/renteklassen) |
+| Woning op het oog (starter) | `opzet_hypotheek_starter` | Complete opzet voor specifiek huis |
+| Woning op het oog (doorstromer) | `opzet_hypotheek_doorstromer` | Combineert oude en nieuwe hypotheek voor specifieke woning |
+| Woning op het oog + maatwerk | `opzet_hypotheek_uitgebreid` | Scenario’s tweaken (rentes, looptijden, meerdere leningdelen) |
 | Wat zijn de huidige rentes? | `haal_actuele_rentes_op` | Rente-informatie nodig |
 
 ---

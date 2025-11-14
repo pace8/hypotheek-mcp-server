@@ -163,6 +163,16 @@ const DOORSTROMER_OUTPUT_GUIDANCE = `
 
 Vraag altijd: "Wilt u een snelle globale berekening (met een samenvatting van uw hypotheek) of een detailberekening waarbij u alle leningdelen invoert?" en volg de gekozen route.`;
 
+// BESLISBOOM VOOR AI-AGENTS
+// 1. Heeft de gebruiker een concrete woning/koopprijs in gedachten?
+//    - Ja → gebruik altijd een OPZET tool (starter, doorstromer of uitgebreid).
+//    - Nee → gebruik een MAXIMALE HYPOTHEEK tool.
+// 2. Is de gebruiker starter (nog geen eigen woning) of doorstromer (heeft al woning/hypotheek)?
+//    - Kies de starter- of doorstromervariant van het gekozen pad (maximaal of opzet).
+// 3. Wil de gebruiker specifiek spelen met looptijd/rente/hypotheekvorm?
+//    - Nee → kies de standaard tool (opzet_hypotheek_starter/doorstromer of bereken_hypotheek_starter/doorstromer).
+//    - Ja → gebruik de uitgebreide variant (opzet_hypotheek_uitgebreid of bereken_hypotheek_uitgebreid) en vraag naar de gewenste parameters.
+
 // Leeftijd/geboortedatum beleid:
 // - Vraag eindgebruikers altijd: "Wat is uw leeftijd of geboortedatum?"
 // - Converteer een opgegeven leeftijd intern naar een geboortedatum in ISO-formaat voor MCP-calls
@@ -770,7 +780,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       // Tool 1: Starters - Simpele berekening
       {
         name: "bereken_hypotheek_starter",
-        description: "Berekent de maximale hypotheek voor starters. Output: maximaal leenbedrag, maandlast en NHG-vergelijking.",
+        description: `Maximale hypotheek voor starters ZONDER concrete woning. Gebruik deze tool alleen wanneer de gebruiker zich oriënteert ("Wat kan ik lenen?") en er nog geen koopsom/adres bekend is. Zodra de gebruiker een specifiek huis of biedprijs noemt moet u overschakelen naar de opzet-hypotheek tools.`,
         inputSchema: {
           type: "object",
           description: `Gebruik basisintakevelden; zie ${OPZET_GUIDE_URI} voor detaildefinities.`,
@@ -788,7 +798,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       // Tool 2: Doorstromers - Met bestaande hypotheek
       {
         name: "bereken_hypotheek_doorstromer",
-        description: `Berekent de maximale hypotheek voor doorstromers (standaard variant). Alle regels uit het doorstromerbeleid gelden ook voor de uitgebreide tool:
+        description: `Maximale hypotheek voor doorstromers ZONDER concrete woning. Gebruik dit wanneer de gebruiker wil weten hoeveel ruimte er is om straks te verhuizen maar er nog geen koopsom of specifieke woning op tafel ligt. Zodra een concreet huis ter sprake komt schakelt u over op de opzet-hypotheek tools. Alle regels uit het doorstromerbeleid gelden ook voor de uitgebreide tool:
 ${DOORSTROMER_OUTPUT_GUIDANCE}`,
         inputSchema: {
           type: "object",
@@ -818,7 +828,7 @@ ${DOORSTROMER_OUTPUT_GUIDANCE}`,
       // Tool 3: Uitgebreid - Alle parameters configureerbaar
       {
         name: "bereken_hypotheek_uitgebreid",
-        description: `Gebruik dit voor maatwerk (rente, looptijd, energielabel). Output: maatwerk leenbedrag met maandlast en NHG-inschatting. Zodra u dit tool voor een doorstromer inzet (is_doorstromer=true of bestaande_hypotheek ingevuld), gelden dezelfde regels als bij de standaard doorstromer-tool:
+        description: `Maximale hypotheek – uitgebreide variant. Gebruik dit alleen wanneer er nog GEEN concrete woning is, maar de gebruiker/adviseur expliciet met parameters wil spelen (bijv. andere rentevast-periodes, custom renteklassen, scenariovergelijkingen). Voor een concrete woning altijd de opzet-tools gebruiken. Zodra u dit tool voor een doorstromer inzet (is_doorstromer=true of bestaande_hypotheek ingevuld), gelden dezelfde regels als bij de standaard doorstromer-tool:
 ${DOORSTROMER_OUTPUT_GUIDANCE}`,
         inputSchema: {
           type: "object",
@@ -869,7 +879,7 @@ ${DOORSTROMER_OUTPUT_GUIDANCE}`,
       // Tool 5: Opzet hypotheek - Starters
       {
         name: "opzet_hypotheek_starter",
-        description: "Berekent de hypotheekopzet voor starters. Output: totaal benodigd bedrag, financieringsoverzicht en maandlast.",
+        description: `Opzet-berekening voor starters met een CONCRETE woning. Gebruik dit zodra de gebruiker een huis/koopprijs noemt en wil weten “kan ik deze woning kopen, hoe ziet de financiering eruit?”. Voor louter oriëntatie zonder woning blijft u bij de maximale-hypotheek tools. Dit is de standaardvariant; kies opzet_hypotheek_uitgebreid wanneer de gebruiker expliciet scenario’s/leningdelen wil tweaken.`,
         inputSchema: {
           type: "object",
           description: `Gebruik basisintake plus woninginfo; zie ${OPZET_GUIDE_URI} voor detailvelden en defaults.`,
@@ -892,7 +902,7 @@ ${DOORSTROMER_OUTPUT_GUIDANCE}`,
       // Tool 6: Opzet hypotheek - Doorstromers
       {
         name: "opzet_hypotheek_doorstromer",
-        description: `Berekent de hypotheekopzet voor doorstromers met bestaande woning. Output: benodigd bedrag, financiering per component en maandlasten (bestaand versus nieuw).
+        description: `Opzet-berekening voor doorstromers met een CONCRETE nieuwe woning. Gebruik dit zodra er een koopprijs/verbouwing bekend is; hiermee ziet de gebruiker exact hoe bestaand en nieuw samenkomen. Voor algemene verhuis-oriëntatie zonder specifieke woning gebruikt u de maximale-hypotheek tools.
 
 **Invoerbeleid bestaande hypotheek (verplicht expliciet vragen):**
 - Stel altijd de vraag: "Wilt u een snelle globale berekening (met een samenvatting van uw hypotheek) of een detailberekening waarbij u alle leningdelen invoert?"
@@ -929,7 +939,7 @@ ${DOORSTROMER_OUTPUT_GUIDANCE}`,
       // Tool 7: Opzet hypotheek - Uitgebreid
       {
         name: "opzet_hypotheek_uitgebreid",
-        description: `GEAVANCEERDE opzet hypotheek berekening met VOLLEDIGE controle over alle parameters. Geschikt voor zowel starters als doorstromers.
+        description: `GEAVANCEERDE opzet hypotheek berekening met VOLLEDIGE controle over alle parameters. Gebruik deze variant alleen wanneer er een concrete woning is én de gebruiker/adviseur expliciet scenario’s wil tweaken (andere rentes, looptijden, specifieke nieuwe leningdelen). Voor snelle beantwoording zonder maatwerk blijft u bij opzet_hypotheek_starter of opzet_hypotheek_doorstromer.
   
   **Output bevat alles van de starter/doorstromer tools, plus:**
   - Mogelijkheid om elk leningdeel handmatig te definiëren
