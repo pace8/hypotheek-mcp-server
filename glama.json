@@ -1,14 +1,6 @@
 {
   "$schema": "https://glama.ai/mcp/servers/@pace8/mcp-hypotheken-berekenen/schema",
   "maintainers": [
-    {
-      "Name": "pace8",
-      "Email": "info@pace8.nl"
-    }
-  ],
-  "flyApps": [
-    {
-      "name": "mcp-hypotheken-berekenen"
-    }
+    "pace8"
   ]
 }
