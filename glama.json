@@ -2,5 +2,10 @@
   "$schema": "https://glama.ai/mcp/servers/@pace8/mcp-hypotheken-berekenen/schema",
   "maintainers": [
     "pace8"
+  ],
+  "flyApps": [
+    {
+      "Name": "pace8-hypotheek-mcp"
+    }
   ]
 }
