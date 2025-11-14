@@ -23,6 +23,7 @@ import { enforceRateLimit } from './middleware/rate-limiter.js';
 import { 
   normalizeDoorstromerArgs,
   normalizeOpzetDoorstromerArgs,
+  normalizeOpzetAanvragerShape,
 } from './adapters/field-normalizer.js';
 import { recordToolCall, recordValidationError } from './metrics/exporter.js';
 import { listResources, readResource } from './resources/index.js';
@@ -85,8 +86,7 @@ interface UitgebreidArguments extends BaseArguments {
 }
 
 // Type definitions voor opzet hypotheek
-interface OpzetBaseArguments {
-  session_id?: string; // OPTIONEEL - Sessie ID van de gebruiker uit n8n chat trigger: "When chat message received"
+interface OpzetAanvrager {
   inkomen_aanvrager: number;
   geboortedatum_aanvrager: string;
   heeft_partner: boolean;
@@ -94,6 +94,11 @@ interface OpzetBaseArguments {
   geboortedatum_partner?: string;
   verplichtingen_pm?: number;
   eigen_vermogen?: number;
+}
+
+interface OpzetBaseArguments {
+  session_id?: string; // OPTIONEEL - Sessie ID van de gebruiker uit n8n chat trigger: "When chat message received"
+  aanvrager: OpzetAanvrager;
 }
 
 interface NieuweWoning {
@@ -191,6 +196,20 @@ const baseIntakeProperties = {
 };
 
 const baseIntakeRequired = ["inkomen_aanvrager", "geboortedatum_aanvrager", "heeft_partner"];
+
+const aanvragerSchema = {
+  type: "object",
+  description: 'Gegevens van de (hoofd)aanvrager. Vraag altijd: "Wat is uw leeftijd of geboortedatum?" en gebruik opgegeven leeftijden alleen intern.',
+  properties: {
+    ...baseIntakeProperties,
+    eigen_vermogen: {
+      type: "number",
+      description: "Beschikbaar eigen geld in euro's (optioneel).",
+      default: 0,
+    },
+  },
+  required: [...baseIntakeRequired],
+};
 
 const nieuweWoningSchema = {
   type: "object",
@@ -347,6 +366,13 @@ function errorResponse(error: unknown, sessionId?: string): ToolErrorResponse {
   };
 }
 
+function normalizeSessionIdField(obj: Record<string, unknown>) {
+  if (!obj) return;
+  if (!obj.session_id && typeof obj.sessionId === 'string' && obj.sessionId.trim().length > 0) {
+    obj.session_id = obj.sessionId;
+  }
+}
+
 function requireArguments<T>(request: any): T {
   if (!request.params?.arguments) {
     throw new ValidationError(
@@ -355,12 +381,21 @@ function requireArguments<T>(request: any): T {
       'arguments'
     );
   }
-  return request.params.arguments as unknown as T;
+  const args = request.params.arguments as Record<string, unknown>;
+  normalizeSessionIdField(args);
+  return args as unknown as T;
 }
 
 function extractSessionId(args: unknown): string | undefined {
-  if (args && typeof args === 'object' && 'session_id' in (args as Record<string, unknown>)) {
-    return (args as Record<string, unknown>).session_id as string | undefined;
+  if (!args || typeof args !== 'object') {
+    return undefined;
+  }
+  const record = args as Record<string, unknown>;
+  if ('session_id' in record && typeof record.session_id === 'string') {
+    return record.session_id;
+  }
+  if ('sessionId' in record && typeof record.sessionId === 'string') {
+    return record.sessionId;
   }
   return undefined;
 }
@@ -383,15 +418,37 @@ function mapAanvragers(args: {
   };
 }
 
-function mapOpzetAanvrager(args: OpzetBaseArguments) {
+function validateOpzetAanvrager(aanvrager: OpzetAanvrager) {
+  validateBaseArguments({
+    inkomen_aanvrager: aanvrager.inkomen_aanvrager,
+    geboortedatum_aanvrager: aanvrager.geboortedatum_aanvrager,
+    heeft_partner: aanvrager.heeft_partner,
+    inkomen_partner: aanvrager.inkomen_partner,
+    geboortedatum_partner: aanvrager.geboortedatum_partner,
+    verplichtingen_pm: aanvrager.verplichtingen_pm,
+  } as BaseArguments);
+}
+
+function requireOpzetAanvrager(container: { aanvrager?: OpzetAanvrager }): OpzetAanvrager {
+  if (!container.aanvrager || typeof container.aanvrager !== 'object') {
+    throw new ValidationError(
+      ErrorCode.INVALID_INPUT,
+      'aanvrager ontbreekt of is onvolledig',
+      'aanvrager'
+    );
+  }
+  return container.aanvrager;
+}
+
+function mapOpzetAanvrager(aanvrager: OpzetAanvrager) {
   return {
-    inkomen_aanvrager: args.inkomen_aanvrager,
-    geboortedatum_aanvrager: args.geboortedatum_aanvrager,
-    heeft_partner: args.heeft_partner,
-    inkomen_partner: args.inkomen_partner ?? 0,
-    geboortedatum_partner: args.geboortedatum_partner ?? null,
-    verplichtingen_pm: args.verplichtingen_pm ?? 0,
-    eigen_vermogen: args.eigen_vermogen ?? 0,
+    inkomen_aanvrager: aanvrager.inkomen_aanvrager,
+    geboortedatum_aanvrager: aanvrager.geboortedatum_aanvrager,
+    heeft_partner: aanvrager.heeft_partner,
+    inkomen_partner: aanvrager.inkomen_partner ?? 0,
+    geboortedatum_partner: aanvrager.geboortedatum_partner ?? null,
+    verplichtingen_pm: aanvrager.verplichtingen_pm ?? 0,
+    eigen_vermogen: aanvrager.eigen_vermogen ?? 0,
   };
 }
 
@@ -569,32 +626,34 @@ async function handleActueleRentes(request: any): Promise<ToolResponse> {
 }
 
 async function handleOpzetStarter(request: any): Promise<ToolResponse> {
-  const args = requireArguments<OpzetStarterArguments>(request);
-  const logger = createLogger(args.session_id);
+  const rawArgs = requireArguments<OpzetStarterArguments>(request);
+  const normalizedArgs = normalizeOpzetAanvragerShape(rawArgs) as OpzetStarterArguments;
+  const logger = createLogger(normalizedArgs.session_id);
 
-  validateBaseArguments(args as BaseArguments);
-  enforceRateLimit(args.session_id);
+  const aanvrager = requireOpzetAanvrager(normalizedArgs);
+  validateOpzetAanvrager(aanvrager);
+  enforceRateLimit(normalizedArgs.session_id);
 
   const payload: any = {
-    aanvrager: mapOpzetAanvrager(args),
+    aanvrager: mapOpzetAanvrager(aanvrager),
     nieuwe_woning: {
-      waarde_woning: args.nieuwe_woning.waarde_woning,
-      bedrag_verbouwen: args.nieuwe_woning.bedrag_verbouwen ?? 0,
-      bedrag_verduurzamen: args.nieuwe_woning.bedrag_verduurzamen ?? 0,
-      kosten_percentage: args.nieuwe_woning.kosten_percentage ?? 0.05,
-      energielabel: normalizeEnergielabel(args.nieuwe_woning.energielabel || ''),
+      waarde_woning: normalizedArgs.nieuwe_woning.waarde_woning,
+      bedrag_verbouwen: normalizedArgs.nieuwe_woning.bedrag_verbouwen ?? 0,
+      bedrag_verduurzamen: normalizedArgs.nieuwe_woning.bedrag_verduurzamen ?? 0,
+      kosten_percentage: normalizedArgs.nieuwe_woning.kosten_percentage ?? 0.05,
+      energielabel: normalizeEnergielabel(normalizedArgs.nieuwe_woning.energielabel || ''),
     },
   };
 
-  if (args.session_id) {
-    payload.session_id = args.session_id;
+  if (normalizedArgs.session_id) {
+    payload.session_id = normalizedArgs.session_id;
   }
 
   const apiClient = getApiClient();
   const { data } = await apiClient.post(
     REPLIT_API_URL_OPZET,
     payload,
-    { correlationId: args.session_id }
+    { correlationId: normalizedArgs.session_id }
   );
 
   logger.info('Toolcall succesvol', { tool: 'opzet_hypotheek_starter' });
@@ -606,12 +665,13 @@ async function handleOpzetDoorstromer(request: any): Promise<ToolResponse> {
   const normalizedArgs = normalizeOpzetDoorstromerArgs(rawArgs) as OpzetDoorstromerArguments;
   const logger = createLogger(normalizedArgs.session_id);
 
-  validateBaseArguments(normalizedArgs as BaseArguments);
+  const aanvrager = requireOpzetAanvrager(normalizedArgs);
+  validateOpzetAanvrager(aanvrager);
   validateBestaandeHypotheek(normalizedArgs.bestaande_hypotheek);
   enforceRateLimit(normalizedArgs.session_id);
 
   const payload: any = {
-    aanvrager: mapOpzetAanvrager(normalizedArgs),
+    aanvrager: mapOpzetAanvrager(aanvrager),
     bestaande_hypotheek: {
       waarde_huidige_woning: normalizedArgs.waarde_huidige_woning,
       leningdelen: normalizedArgs.bestaande_hypotheek.leningdelen,
@@ -644,17 +704,18 @@ async function handleOpzetUitgebreid(request: any): Promise<ToolResponse> {
   const rawArgs = requireArguments<OpzetUitgebreidArguments>(request);
   const normalizedArgs = rawArgs.is_doorstromer
     ? (normalizeOpzetDoorstromerArgs(rawArgs) as OpzetUitgebreidArguments)
-    : rawArgs;
+    : (normalizeOpzetAanvragerShape(rawArgs) as OpzetUitgebreidArguments);
   const logger = createLogger(normalizedArgs.session_id);
 
-  validateBaseArguments(normalizedArgs as BaseArguments);
+  const aanvrager = requireOpzetAanvrager(normalizedArgs);
+  validateOpzetAanvrager(aanvrager);
   if (normalizedArgs.is_doorstromer && normalizedArgs.bestaande_hypotheek) {
     validateBestaandeHypotheek(normalizedArgs.bestaande_hypotheek);
   }
   enforceRateLimit(normalizedArgs.session_id);
 
   const payload: any = {
-    aanvrager: mapOpzetAanvrager(normalizedArgs),
+    aanvrager: mapOpzetAanvrager(aanvrager),
     nieuwe_woning: {
       waarde_woning: normalizedArgs.nieuwe_woning.waarde_woning,
       bedrag_verbouwen: normalizedArgs.nieuwe_woning.bedrag_verbouwen ?? 0,
@@ -764,11 +825,6 @@ ${DOORSTROMER_OUTPUT_GUIDANCE}`,
           description: `Alle velden zijn optioneel bovenop de basisintake; zie ${OPZET_GUIDE_URI} voor velduitleg en defaults.`,
           properties: {
             ...baseIntakeProperties,
-            eigen_vermogen: {
-              type: "number",
-              description: "Optioneel beschikbaar eigen geld in euro's.",
-              default: 0,
-            },
             is_doorstromer: {
               type: "boolean",
               description: "Geeft aan of de aanvrager een doorstromer is.",
@@ -818,12 +874,7 @@ ${DOORSTROMER_OUTPUT_GUIDANCE}`,
           type: "object",
           description: `Gebruik basisintake plus woninginfo; zie ${OPZET_GUIDE_URI} voor detailvelden en defaults.`,
           properties: {
-            ...baseIntakeProperties,
-            eigen_vermogen: {
-              type: "number",
-              description: "Optioneel beschikbaar eigen geld in euro's.",
-              default: 0,
-            },
+            aanvrager: aanvragerSchema,
             nieuwe_woning: {
               ...nieuweWoningSchema,
             },
@@ -833,7 +884,7 @@ ${DOORSTROMER_OUTPUT_GUIDANCE}`,
             },
           },
           required: [
-            ...baseIntakeRequired,
+            "aanvrager",
             "nieuwe_woning",
           ],
         },
@@ -851,12 +902,7 @@ ${DOORSTROMER_OUTPUT_GUIDANCE}`,
           type: "object",
           description: `Gebruik basisintake, huidige woning en bestaande leningdelen; zie ${OPZET_GUIDE_URI} voor detailvelden en defaults.`,
           properties: {
-            ...baseIntakeProperties,
-            eigen_vermogen: {
-              type: "number",
-              description: "Optioneel beschikbaar eigen geld in euro's.",
-              default: 0,
-            },
+            aanvrager: aanvragerSchema,
             waarde_huidige_woning: {
               type: "number",
               description: "Marktwaarde van de huidige woning.",
@@ -873,7 +919,7 @@ ${DOORSTROMER_OUTPUT_GUIDANCE}`,
             },
           },
           required: [
-            ...baseIntakeRequired,
+            "aanvrager",
             "waarde_huidige_woning",
             "bestaande_hypotheek",
             "nieuwe_woning",
@@ -900,36 +946,7 @@ ${DOORSTROMER_OUTPUT_GUIDANCE}`,
         inputSchema: {
           type: "object",
           properties: {
-            inkomen_aanvrager: {
-              type: "number",
-              description: "Bruto jaarinkomen van de hoofdaanvrager in euro's",
-            },
-            geboortedatum_aanvrager: {
-              type: "string",
-              description: "Interne geboortedatum aanvrager (ISO). Vraag de gebruiker: \"Wat is uw leeftijd of geboortedatum?\" en houd afgeleide datums voor uzelf.",
-            },
-            heeft_partner: {
-              type: "boolean",
-              description: "Heeft de aanvrager een partner die mee aanvraagt?",
-            },
-            inkomen_partner: {
-              type: "number",
-              description: "OPTIONEEL - Bruto jaarinkomen van de partner in euro's.",
-            },
-            geboortedatum_partner: {
-              type: "string",
-              description: "OPTIONEEL - Interne geboortedatum partner. Vraag dezelfde leeftijd/geboortedatum-vraag en deel alleen de leeftijd terug indien relevant.",
-            },
-            verplichtingen_pm: {
-              type: "number",
-              description: "Maandelijkse verplichtingen in euro's.",
-              default: 0,
-            },
-            eigen_vermogen: {
-              type: "number",
-              description: "Eigen geld beschikbaar in euro's.",
-              default: 0,
-            },
+            aanvrager: aanvragerSchema,
             is_doorstromer: {
               type: "boolean",
               description: "Is dit een doorstromer met bestaande woning en hypotheek?",
@@ -1063,9 +1080,7 @@ ${DOORSTROMER_OUTPUT_GUIDANCE}`,
             },
           },
           required: [
-            "inkomen_aanvrager",
-            "geboortedatum_aanvrager",
-            "heeft_partner",
+            "aanvrager",
             "nieuwe_woning",
           ],
         },
@@ -1228,6 +1243,102 @@ function renderDoorstromerBudgetBlock(resultaat: any): string | null {
     line(`  Verschil: ${diffText}`),
     horizontal("bottom"),
   ].join("\n");
+}
+
+function renderOpzetSummary(resultaat: any, isDoorstromer: boolean): string {
+  const benodigd = resultaat?.Benodigd_bedrag ?? {};
+  const financiering = resultaat?.Financiering ?? {};
+  const maandlasten = resultaat?.Maandlasten ?? {};
+
+  const format0 = (value: number | null) =>
+    formatEuro(value, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  const monthlyText = (value: number | null) =>
+    value === null
+      ? 'n.v.t.'
+      : `${formatEuro(value, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} / maand`;
+
+  const koopprijs = sanitizeNumber(benodigd.Woning_koopsom);
+  const verbouwing = sanitizeNumber(benodigd.Verbouwingskosten_meerwerk);
+  const verduurzaming = sanitizeNumber(benodigd.Verduurzamingskosten);
+  const kosten = sanitizeNumber(benodigd.Kosten);
+  const totaalBenodigd = sanitizeNumber(
+    benodigd.Totaal_benodigd ??
+      ((koopprijs || 0) + (verbouwing || 0) + (verduurzaming || 0) + (kosten || 0))
+  );
+
+  const finBestaand = sanitizeNumber(
+    financiering.Bestaande_hypotheek_over_te_sluiten ??
+      financiering.Bestaande_hypotheek?.Totaal_schuld
+  );
+  const finNieuwe = sanitizeNumber(financiering.Nieuwe_hypotheek ?? financiering.Hypotheek);
+  const finOverwaarde = sanitizeNumber(financiering.Overwaarde);
+  const finEigen = sanitizeNumber(financiering.Eigen_geld);
+  const finTotaal = sanitizeNumber(financiering.Totaal_financiering);
+
+  const maandNu = sanitizeNumber(
+    maandlasten.Bestaande_hypotheek ?? maandlasten.Bestaande_hypotheek_maandlast
+  );
+  const maandStraks = sanitizeNumber(
+    maandlasten.Totaal ??
+      maandlasten.Totaal_maandlast ??
+      maandlasten.Nieuwe_hypotheek_maandlast ??
+      resultaat.bruto_maandlasten_nieuwe_lening
+  );
+  const maandVerschil = sanitizeNumber(
+    maandlasten.Verschil ??
+      maandlasten.Verschil_maandlast ??
+      (maandStraks !== null && maandNu !== null ? maandStraks - maandNu : null)
+  );
+
+  const diffText =
+    maandVerschil === null
+      ? 'n.v.t.'
+      : `${maandVerschil > 0 ? '+' : maandVerschil < 0 ? '-' : ''}${formatEuro(Math.abs(maandVerschil), {
+          minimumFractionDigits: 0,
+          maximumFractionDigits: 0,
+        })} / maand`;
+
+  const lines: string[] = [];
+  lines.push(`💰 Vraagprijs woning: ${format0(koopprijs)}`);
+  lines.push('═══════════════════════════════════');
+  lines.push('');
+  lines.push('BENODIGD BEDRAG:');
+  lines.push(`├─ Koopprijs: ${format0(koopprijs)}`);
+  if (kosten !== null && kosten !== 0) {
+    lines.push(`├─ Kosten: ${format0(kosten)}`);
+  }
+  if (verbouwing !== null && verbouwing !== 0) {
+    lines.push(`├─ Verbouwing: ${format0(verbouwing)}`);
+  }
+  if (verduurzaming !== null && verduurzaming !== 0) {
+    lines.push(`├─ Verduurzaming: ${format0(verduurzaming)}`);
+  }
+  lines.push(`└─ TOTAAL NODIG: ${format0(totaalBenodigd)}`);
+
+  lines.push('');
+  lines.push('FINANCIERING:');
+  if (isDoorstromer && finBestaand !== null) {
+    lines.push(`├─ Bestaande hypotheek: ${format0(finBestaand)}`);
+  }
+  if (finNieuwe !== null) {
+    lines.push(`├─ Nieuwe hypotheek: ${format0(finNieuwe)}`);
+  }
+  if (finOverwaarde !== null) {
+    lines.push(`├─ Overwaarde: ${format0(finOverwaarde)}`);
+  }
+  if (finEigen !== null) {
+    lines.push(`├─ Eigen geld: ${format0(finEigen)}`);
+  }
+  lines.push(`└─ Totaal: ${format0(finTotaal)}`);
+
+  lines.push('');
+  lines.push('📊 Uw nieuwe maandlast');
+  lines.push(`Nu:      ${monthlyText(maandNu)}`);
+  lines.push(`Straks:  ${monthlyText(maandStraks)}`);
+  lines.push('──────────────────────────────');
+  lines.push(`Verschil: ${diffText}`);
+
+  return lines.join('\n');
 }
 
 // Functie om response mooi te formatteren
@@ -1413,296 +1524,29 @@ function formatResponse(data: any, toolName: string): string {
   if (toolName.startsWith("opzet_hypotheek_")) {
     const toolType = toolName.replace("opzet_hypotheek_", "").toUpperCase();
     const isDoorstromer = toolName.includes("doorstromer");
-    
+
     output += `🏠 **OPZET HYPOTHEEK - ${toolType}**\n\n`;
-    
-    if (data.resultaat) {
-      const resultaat = data.resultaat;
-      
-      // ========================================================================
-      // SECTIE 1: BENODIGD BEDRAG
-      // ========================================================================
-      output += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
-      output += `📊 **TOTAAL BENODIGD BEDRAG**\n`;
-      output += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
-      
-      if (resultaat.Benodigd_bedrag) {
-        output += `🏡 Koopsom woning: €${resultaat.Benodigd_bedrag.Woning_koopsom?.toLocaleString('nl-NL') || 'N/A'}\n`;
-        
-        if (resultaat.Benodigd_bedrag.Verbouwingskosten_meerwerk > 0) {
-          output += `🔨 Verbouwing/meerwerk: €${resultaat.Benodigd_bedrag.Verbouwingskosten_meerwerk?.toLocaleString('nl-NL') || 'N/A'}\n`;
+
+    if (resultaten.length > 0) {
+      resultaten.forEach((resultaat: any, index: number) => {
+        if (resultaten.length > 1) {
+          const scenario = resultaat.resultaat_omschrijving || `Scenario ${index + 1}`;
+          output += `📊 **${scenario}**\n`;
         }
-        if (resultaat.Benodigd_bedrag.Verduurzamingskosten > 0) {
-          output += `♻️ Verduurzaming: €${resultaat.Benodigd_bedrag.Verduurzamingskosten?.toLocaleString('nl-NL') || 'N/A'}\n`;
-        }
-        output += `💼 Kosten koper: €${resultaat.Benodigd_bedrag.Kosten?.toLocaleString('nl-NL') || 'N/A'}\n`;
-        
-        // Bereken totaal (fallback als API het niet geeft)
-        const totaalBenodigd = resultaat.Benodigd_bedrag.Totaal_benodigd || 
-          ((resultaat.Benodigd_bedrag.Woning_koopsom || 0) + 
-           (resultaat.Benodigd_bedrag.Verbouwingskosten_meerwerk || 0) +
-           (resultaat.Benodigd_bedrag.Verduurzamingskosten || 0) +
-           (resultaat.Benodigd_bedrag.Kosten || 0));
-        
-        output += `${'─'.repeat(45)}\n`;
-        output += `💰 **TOTAAL BENODIGD: €${totaalBenodigd.toLocaleString('nl-NL')}**\n\n`;
-      }
-      
-      // ========================================================================
-      // SECTIE 2: FINANCIERING (met breakdown voor doorstromers)
-      // ========================================================================
-      output += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
-      output += `💵 **FINANCIERING**\n`;
-      output += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
-      
-      if (resultaat.Financiering) {
-        // Voor doorstromers: toon bestaande hypotheek
-        if (isDoorstromer && resultaat.Financiering.Bestaande_hypotheek) {
-          const bestaand = resultaat.Financiering.Bestaande_hypotheek;
-          output += `🔄 Bestaande hypotheek (over te sluiten): €${bestaand.Totaal_schuld?.toLocaleString('nl-NL') || 'N/A'}\n`;
-        } else if (isDoorstromer) {
-          // Fallback: bereken uit opzet_nieuwe_hypotheek
-          let bestaandeSchuld = 0;
-          if (resultaat.gebruikte_hypotheekgegevens?.opzet_nieuwe_hypotheek) {
-            resultaat.gebruikte_hypotheekgegevens.opzet_nieuwe_hypotheek.forEach((deel: any) => {
-              if (deel.type === 'bestaand_leningdeel') {
-                bestaandeSchuld += deel.hypotheekbedrag || 0;
-              }
-            });
-          }
-          if (bestaandeSchuld > 0) {
-            output += `🔄 Bestaande hypotheek (over te sluiten): €${bestaandeSchuld.toLocaleString('nl-NL')}\n`;
-          }
-        }
-        
-        // Nieuwe hypotheek
-        const nieuweHypotheek = resultaat.Financiering.Nieuwe_hypotheek || resultaat.Financiering.Hypotheek || 0;
-        if (isDoorstromer && nieuweHypotheek > 0) {
-          output += `🆕 Nieuwe hypotheek (extra): €${nieuweHypotheek.toLocaleString('nl-NL')}\n`;
-        } else {
-          output += `🏦 Hypotheek: €${nieuweHypotheek.toLocaleString('nl-NL')}\n`;
-        }
-        
-        // Overwaarde
-        if (resultaat.Financiering.Overwaarde !== undefined && resultaat.Financiering.Overwaarde > 0) {
-          output += `📈 Overwaarde huidige woning: €${resultaat.Financiering.Overwaarde?.toLocaleString('nl-NL')}\n`;
-        }
-        
-        // Eigen geld
-        const eigenGeld = resultaat.Financiering.Eigen_geld || 0;
-        if (eigenGeld > 0) {
-          output += `💎 Eigen geld: €${eigenGeld.toLocaleString('nl-NL')}\n`;
-        }
-        
-        // Bereken totaal financiering (fallback als API het niet geeft)
-        let totaalFinanciering = resultaat.Financiering.Totaal_financiering;
-        if (!totaalFinanciering) {
-          const bestaandBedrag = resultaat.Financiering.Bestaande_hypotheek?.Totaal_schuld || 0;
-          totaalFinanciering = bestaandBedrag + nieuweHypotheek + 
-            (resultaat.Financiering.Overwaarde || 0) + eigenGeld;
-        }
-        
-        output += `${'─'.repeat(45)}\n`;
-        output += `💵 **TOTAAL FINANCIERING: €${totaalFinanciering.toLocaleString('nl-NL')}**\n\n`;
-        
-        // Balans check
-        if (resultaat.Benodigd_bedrag) {
-          const totaalBenodigd = resultaat.Benodigd_bedrag.Totaal_benodigd || 
-            ((resultaat.Benodigd_bedrag.Woning_koopsom || 0) + 
-             (resultaat.Benodigd_bedrag.Verbouwingskosten_meerwerk || 0) +
-             (resultaat.Benodigd_bedrag.Verduurzamingskosten || 0) +
-             (resultaat.Benodigd_bedrag.Kosten || 0));
-          
-          const verschil = Math.abs(totaalFinanciering - totaalBenodigd);
-          
-          if (verschil < 1) {
-            output += `✅ **Balans: Financiering dekt benodigd bedrag** ✓\n\n`;
-          } else if (totaalFinanciering < totaalBenodigd) {
-            output += `⚠️ **Let op: Tekort van €${verschil.toLocaleString('nl-NL')}**\n`;
-            output += `   → Meer eigen geld of hogere hypotheek nodig\n\n`;
-          } else {
-            output += `ℹ️ **Overschot van €${verschil.toLocaleString('nl-NL')}**\n`;
-            output += `   → Kan als buffer/reserve dienen\n\n`;
-          }
-        }
-      }
-      
-      // ========================================================================
-      // SECTIE 3: MAANDLASTEN (met breakdown voor doorstromers)
-      // ========================================================================
-      output += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
-      output += `📊 **MAANDLASTEN**\n`;
-      output += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
-      
-      // Check of API nieuwe Maandlasten object heeft
-      if (resultaat.Maandlasten) {
-        // NIEUW: API geeft breakdown
-        if (isDoorstromer) {
-          output += `🔄 Bestaande hypotheek: €${Math.round(resultaat.Maandlasten.Bestaande_hypotheek || 0).toLocaleString('nl-NL')}/maand\n`;
-          output += `🆕 Nieuwe hypotheek (extra): €${Math.round(resultaat.Maandlasten.Nieuwe_hypotheek || 0).toLocaleString('nl-NL')}/maand\n`;
-          output += `${'─'.repeat(45)}\n`;
-          output += `💰 **TOTAAL MAANDLAST: €${Math.round(resultaat.Maandlasten.Totaal).toLocaleString('nl-NL')}/maand**\n\n`;
-          
-          const verschil = resultaat.Maandlasten.Verschil || 0;
-          if (verschil > 0) {
-            output += `📈 **Stijging maandlast: +€${Math.round(verschil).toLocaleString('nl-NL')}/maand**\n\n`;
-          } else if (verschil < 0) {
-            output += `📉 **Daling maandlast: -€${Math.round(Math.abs(verschil)).toLocaleString('nl-NL')}/maand**\n\n`;
-          } else {
-            output += `➡️ **Maandlast blijft gelijk**\n\n`;
-          }
-        } else {
-          // Starter: alleen totaal
-          output += `💰 **Bruto maandlast: €${Math.round(resultaat.Maandlasten.Totaal).toLocaleString('nl-NL')}/maand**\n\n`;
-        }
-      } else {
-        // FALLBACK: oude API response zonder breakdown
-        if (isDoorstromer && resultaat.gebruikte_hypotheekgegevens?.opzet_nieuwe_hypotheek) {
-          // Bereken breakdown handmatig
-          let bestaandeMaandlast = 0;
-          let nieuweMaandlast = 0;
-          
-          resultaat.gebruikte_hypotheekgegevens.opzet_nieuwe_hypotheek.forEach((deel: any) => {
-            const bedrag = deel.hypotheekbedrag || 0;
-            const rente = deel.rente || 0;
-            const geschatteMaandlast = (bedrag * rente) / 12;
-            
-            if (deel.type === 'bestaand_leningdeel') {
-              bestaandeMaandlast += geschatteMaandlast;
-            } else {
-              nieuweMaandlast += geschatteMaandlast;
-            }
-          });
-          
-          output += `🔄 Bestaande hypotheek: €${Math.round(bestaandeMaandlast).toLocaleString('nl-NL')}/maand (geschat)\n`;
-          output += `🆕 Nieuwe hypotheek (extra): €${Math.round(nieuweMaandlast).toLocaleString('nl-NL')}/maand (geschat)\n`;
-          output += `${'─'.repeat(45)}\n`;
-          output += `💰 **TOTAAL MAANDLAST: €${(resultaat.bruto_maandlasten_nieuwe_lening || 0).toLocaleString('nl-NL', {minimumFractionDigits: 2})}/maand**\n\n`;
-          
-          const verschil = (resultaat.bruto_maandlasten_nieuwe_lening || 0) - Math.round(bestaandeMaandlast);
-          if (verschil > 50) {
-            output += `📈 **Stijging maandlast: +€${Math.round(verschil).toLocaleString('nl-NL')}/maand** (geschat)\n\n`;
-          }
-        } else {
-          // Starter: alleen totaal
-          output += `💰 **Bruto maandlast: €${(resultaat.bruto_maandlasten_nieuwe_lening || 0).toLocaleString('nl-NL', {minimumFractionDigits: 2})}/maand**\n\n`;
-        }
-      }
-      
-      // ========================================================================
-      // SECTIE 4: HYPOTHEEKDETAILS
-      // ========================================================================
-      if (resultaat.gebruikte_hypotheekgegevens) {
-        output += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
-        output += `🔍 **HYPOTHEEKDETAILS**\n`;
-        output += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
-        
-        output += `⚡ Energielabel: ${resultaat.gebruikte_hypotheekgegevens.energielabel || 'N/A'}`;
-        if (resultaat.gebruikte_hypotheekgegevens.energielabel_toeslag > 0) {
-          output += ` (+€${resultaat.gebruikte_hypotheekgegevens.energielabel_toeslag?.toLocaleString('nl-NL')} extra leencapaciteit)`;
-        }
-        output += `\n`;
-        output += `🛡️ NHG: ${resultaat.gebruikte_hypotheekgegevens.nhg_toegepast ? 'Ja (lagere rente!)' : 'Nee'}\n\n`;
-        
-        if (resultaat.gebruikte_hypotheekgegevens.opzet_nieuwe_hypotheek && 
-            Array.isArray(resultaat.gebruikte_hypotheekgegevens.opzet_nieuwe_hypotheek)) {
-          output += `**📋 Opzet hypotheek:**
-`;
-          
-          resultaat.gebruikte_hypotheekgegevens.opzet_nieuwe_hypotheek.forEach((deel: any, index: number) => {
-            const deelType = deel.type === 'bestaand_leningdeel' ? '🔄 Bestaand deel' : '🆕 Nieuw deel';
-            output += `
-${deelType} ${index + 1}:
-`;
-            output += `  • Bedrag: €${deel.hypotheekbedrag?.toLocaleString('nl-NL') || 'N/A'}
-`;
-            output += `  • Rente: ${deel.rente ? (deel.rente * 100).toFixed(2) + '%' : 'N/A'}
-`;
-            output += `  • Type: ${deel.hypotheekvorm || 'N/A'}
-`;
-            
-            if (deel.type === 'bestaand_leningdeel') {
-              output += `  • Resterende looptijd: ${deel.resterende_looptijd_maanden ? (deel.resterende_looptijd_maanden / 12).toFixed(0) + ' jaar' : 'N/A'}
-`;
-              output += `  • Nog rentevast: ${deel.rentevastperiode_maanden ? (deel.rentevastperiode_maanden / 12).toFixed(0) + ' jaar' : 'Variabel'}
-`;
-            } else {
-              output += `  • Looptijd: ${deel.looptijd_maanden ? (deel.looptijd_maanden / 12).toFixed(0) + ' jaar' : 'N/A'}
-`;
-              output += `  • Rentevast: ${deel.rentevastperiode_maanden ? (deel.rentevastperiode_maanden / 12).toFixed(0) + ' jaar' : 'Variabel'}
-`;
-            }
-          });
-          output += `
-`;
-        }
-      }
-      
-      // ========================================================================
-      // SECTIE 5: PRAKTISCHE TOELICHTING
-      // ========================================================================
-      output += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
-      output += `💡 **PRAKTISCHE TOELICHTING**\n`;
-      output += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
-      
-      // Context-aware feedback
-      if (isDoorstromer) {
-        if (resultaat.Financiering?.Overwaarde && resultaat.Financiering.Overwaarde > 50000) {
-          output += `✓ U heeft een substantiële overwaarde van €${resultaat.Financiering.Overwaarde.toLocaleString('nl-NL')}. Dit geeft u ruimte voor de nieuwe woning of als buffer.\n`;
-        }
-        
-        const totaalMaandlast = resultaat.Maandlasten?.Totaal || resultaat.bruto_maandlasten_nieuwe_lening || 0;
-        if (totaalMaandlast > 2000) {
-          output += `⚠️ Nieuwe maandlast is substantieel (€${Math.round(totaalMaandlast).toLocaleString('nl-NL')}). Zorg dat dit binnen uw budget past.\n`;
-        }
-        
-        const verschil = resultaat.Maandlasten?.Verschil || 0;
-        if (verschil > 500) {
-          output += `ℹ️ Maandlast stijgt met €${Math.round(verschil).toLocaleString('nl-NL')}. Check of dit duurzaam is op lange termijn.\n`;
-        }
-      } else {
-        // Starter specifieke tips
-        if (resultaat.Financiering?.Nieuwe_hypotheek && resultaat.Benodigd_bedrag?.Woning_koopsom) {
-          const hypotheek = resultaat.Financiering.Nieuwe_hypotheek || resultaat.Financiering.Hypotheek;
-          const ltv = (hypotheek / resultaat.Benodigd_bedrag.Woning_koopsom) * 100;
-          
-          if (ltv > 100) {
-            output += `⚠️ U financiert ${ltv.toFixed(0)}% (boven de woningwaarde). Dit betekent geen NHG. Overweeg meer eigen geld in te brengen.\n`;
-          } else if (ltv > 95) {
-            output += `ℹ️ U financiert ${ltv.toFixed(0)}% van de woningwaarde. Hoge financiering betekent vaak hogere rente.\n`;
-          } else if (ltv < 90) {
-            output += `✓ U financiert ${ltv.toFixed(0)}% - dit is gunstig voor uw rente.\n`;
-          }
-        }
-        
-        const eigenGeld = resultaat.Financiering?.Eigen_geld || 0;
-        if (eigenGeld < 10000) {
-          output += `ℹ️ Met meer eigen geld kunt u vaak een betere rente krijgen. Overweeg eventuele spaargeld of giften.\n`;
-        }
-      }
-      
-      // Energielabel tip
-      if (resultaat.gebruikte_hypotheekgegevens?.energielabel) {
-        const label = resultaat.gebruikte_hypotheekgegevens.energielabel;
-        if (label === 'D' || label === 'E' || label === 'F' || label === 'G') {
-          output += `💡 Tip: Met verduurzaming naar label A++ of hoger kunt u tot €30.000 extra lenen tegen een lagere rente!\n`;
-        } else if (label.startsWith('A')) {
-          output += `✓ Uitstekend energielabel! Dit geeft u extra leencapaciteit.\n`;
-        }
-      }
-      
-      output += `\n`;
-    }
-    
-    // Disclaimers
-    if (data.extra_informatie && data.extra_informatie.disclaimers) {
-      output += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
-      output += `⚠️ **DISCLAIMERS**\n`;
-      output += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
-      data.extra_informatie.disclaimers.forEach((disclaimer: string) => {
-        output += `• ${disclaimer}\n`;
+        output += `${renderOpzetSummary(resultaat, isDoorstromer)}\n\n`;
       });
-      output += `\n`;
+    } else if (data.resultaat) {
+      output += `${renderOpzetSummary(data.resultaat, isDoorstromer)}\n\n`;
+    } else {
+      output += 'Geen resultaat ontvangen van de API.\n\n';
+    }
+
+    if (data.extra_informatie?.disclaimers?.length) {
+      output += `⚠️ **DISCLAIMERS**\n`;
+      output += `${data.extra_informatie.disclaimers.map((line: string) => `• ${line}`).join('\n')}\n\n`;
+    }
+    if (data.extra_informatie?.energielabels) {
+      output += `💡 ${data.extra_informatie.energielabels}\n\n`;
     }
   }
 

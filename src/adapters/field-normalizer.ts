@@ -180,6 +180,39 @@ export function normalizeDoorstromerArgs(args: any): any {
   return normalized;
 }
 
+export function normalizeOpzetAanvragerShape(args: any): any {
+  if (!args || typeof args !== 'object') {
+    return args;
+  }
+
+  if (args.aanvrager && typeof args.aanvrager === 'object') {
+    return args;
+  }
+
+  const legacy = { ...args };
+  if (
+    typeof legacy.inkomen_aanvrager === 'number' &&
+    typeof legacy.geboortedatum_aanvrager === 'string' &&
+    typeof legacy.heeft_partner === 'boolean'
+  ) {
+    legacy.aanvrager = {
+      inkomen_aanvrager: legacy.inkomen_aanvrager,
+      geboortedatum_aanvrager: legacy.geboortedatum_aanvrager,
+      heeft_partner: legacy.heeft_partner,
+      inkomen_partner: legacy.inkomen_partner,
+      geboortedatum_partner: legacy.geboortedatum_partner,
+      verplichtingen_pm: legacy.verplichtingen_pm,
+      eigen_vermogen: legacy.eigen_vermogen,
+    };
+  }
+
+  return legacy;
+}
+
 export function normalizeOpzetDoorstromerArgs(args: any): any {
-  return normalizeDoorstromerArgs(args);
+  const normalized = normalizeOpzetAanvragerShape(args);
+  if (normalized?.bestaande_hypotheek) {
+    normalized.bestaande_hypotheek = normalizeBestaandeHypotheek(normalized.bestaande_hypotheek);
+  }
+  return normalized;
 }

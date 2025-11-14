@@ -10,7 +10,7 @@
 
 ## Optioneel maar vaak nuttig
 - `eigen_vermogen`: beschikbaar spaargeld/gift (default 0)
-- `session_id`: doorgegeven vanuit n8n voor logging en rate limiting
+- `session_id`: **altijd** vullen met de n8n-variabele `sessionId` uit de stap *When chat message received* voor logging en rate limiting
 
 ## Nieuwe woning
 - `nieuwe_woning.waarde_woning` (verplicht)

@@ -109,6 +109,11 @@ Voor OPZET berekeningen ook:
 
 - Gebruik altijd euro-tekens en duizendtallen (nl-NL). Het verschil is positief (+) of negatief (-) in het blok en wordt nooit opnieuw berekend.
 
+#### Sessies & correlatie
+- Geef bij elke toolcall het veld `session_id` mee. Gebruik hiervoor de n8n variabele `sessionId` uit de trigger *When chat message received*.
+- Geen discussie met de gebruiker nodig: kopieer de waarde rechtstreeks en plaats deze in de payload.
+- Zonder `session_id` missen we rate-limiting, logging en correlatie; daarom is dit *verplicht* bij elke call.
+
 ### Kritieke Formatting Regels
 
 ⚠️ **BELANGRIJK** - Deze fouten maken 80% van de failures uit:
@@ -952,6 +957,12 @@ Financiering:
    ✅ Toon (in zowel `bereken_hypotheek_doorstromer` als `bereken_hypotheek_uitgebreid`) max_woningbudget, overwaarde_bedrag, maandlast_nu, maandlast_straks zoals de API ze teruggeeft
    ❌ Zelf max hypotheek = overwaarde + extra_leencapaciteit herberekenen (MCP doet dit al)
    ✅ Alleen formatteren (euroteken, duizendtallen) is toegestaan
+   ```
+8. **Altijd `session_id` meesturen**
+   ```typescript
+   ✅ payload.session_id = {{ $json.sessionId }}
+   ❌ "session_id": null // agent vergat de waarde door te geven
+   ✅ Zonder verdere vragen naar de gebruiker kopiëren vanuit de n8n trigger
    ```
 
 ### Don'ts ❌
