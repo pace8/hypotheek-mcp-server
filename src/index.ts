@@ -1174,7 +1174,7 @@ function renderDoorstromerBudgetBlock(resultaat: any): string | null {
   );
   const huidigeSchuld = sanitizeNumber(
     resultaat.huidige_hypotheek_schuld ??
-      resultaat.maximaal_woningbudget_onderdelen?.hoofdsom_leningdelen ??
+      resultaat.maximaal_woningbudget_onderdelen?.Bestaande_hypotheek_mee_te_nemen ??
       resultaat.bestaande_situatie?.totale_restschuld ??
       resultaat.Financiering?.Bestaande_hypotheek?.Totaal_schuld
   );
@@ -1267,7 +1267,7 @@ function renderOpzetSummary(resultaat: any, isDoorstromer: boolean): string {
   );
 
   const finBestaand = sanitizeNumber(
-    financiering.Bestaande_hypotheek_over_te_sluiten ??
+    financiering.Bestaande_hypotheek_mee_te_nemen ??
       financiering.Bestaande_hypotheek?.Totaal_schuld
   );
   const finNieuwe = sanitizeNumber(financiering.Nieuwe_hypotheek ?? financiering.Hypotheek);
